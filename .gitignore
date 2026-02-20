@@ -1,0 +1,83 @@
+# Python venv
+venv/
+env/
+medisuite-env/
+.Python
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+*$py.class
+
+# Python packaging
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+
+# Embedding & vector DB files (very large, never commit these)
+chroma_data/
+chroma_db/
+*.bin
+*.pt
+*.pth
+*.onnx
+*.pkl
+*.npy
+*.npz
+~/.cache/huggingface/
+
+# Sentence transformer / model caches
+sentence_transformers/
+models/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Claim outputs (generated at runtime)
+claims/
+uploads/
+
+# Environment variables (never commit API keys)
+.env
+.env.local
+.env.production
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Mac system files
+.DS_Store
+.AppleDouble
+Thumbs.db
+
+# Logs and temporary files
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# IDE
+.vscode/
+.idea/
+
+# Tesseract OCR temporary files
+tessdata/
+
+# PDF output / Poppler temporary files
+*.pdf
+*.ppm
+*.pbm

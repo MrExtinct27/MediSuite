@@ -1,0 +1,27 @@
+# MediSuite AI Agent - optional Docker Compose for services
+version: "3.8"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - .:/app
+    command: uvicorn medisuite.api.main:app --host 0.0.0.0 --port 8000
+
+  # Uncomment to run DB or ChromaDB in containers
+  # db:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: medisuite
+  #     POSTGRES_PASSWORD: medisuite
+  #     POSTGRES_DB: medisuite
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data:

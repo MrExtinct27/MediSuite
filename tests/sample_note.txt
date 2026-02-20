@@ -1,0 +1,10 @@
+Patient: John Smith, DOB: 1975-03-15
+Insurance ID: BCB123456
+Date of Service: 2025-01-10
+Chief Complaint: Follow-up for Type 2 Diabetes Mellitus
+Diagnosis: Type 2 Diabetes Mellitus with diabetic nephropathy
+Secondary: Hypertension, Chronic kidney disease stage 3
+Procedures: Office visit established patient moderate complexity,
+comprehensive metabolic panel, HbA1c test
+Physician: Dr. Sarah Johnson
+Facility: CSUF Medical Center
