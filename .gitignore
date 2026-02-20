@@ -48,6 +48,11 @@ uploads/
 .env
 .env.local
 .env.production
+.env.example
+
+# Cursor rules
+.cursorrules
+.cursorrules 
 
 # Testing & coverage
 .pytest_cache/
