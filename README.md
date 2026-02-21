@@ -1,7 +1,7 @@
 # MediSuite AI Agent
 ### Agentic AI for Automated Medical Claims and Clinical Workflow Assistance
-> Master's Project — CPSC 597/598 | California State University, Fullerton
-> Student: Yash Pankaj Mahajan | Advisor: Dr. Kenneth Kung
+> Master's Project — CPSC 597 | California State University, Fullerton
+> Student: Yash Pankaj Mahajan | Advisor: Dr. Duy Ho
 
 ---
 
