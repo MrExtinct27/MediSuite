@@ -52,8 +52,6 @@ uploads/
 
 # Cursor rules
 .cursorrules
-.cursorrules 
-
 # Testing & coverage
 .pytest_cache/
 .coverage
