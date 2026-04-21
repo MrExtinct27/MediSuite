@@ -58,9 +58,9 @@ def build_graph() -> StateGraph:
         "validation_agent",
         route_after_validation,
         {
-            "claim_agent":   "claim_agent",
-            "coding_agent":  "increment_retry",  # goes through counter shim first
-            "__end__":       END,
+            "claim_agent":  "claim_agent",
+            "coding_agent": "increment_retry",  # goes through counter shim first
+            # "__end__" is no longer returned — retries exhausted also routes to claim_agent
         },
     )
 

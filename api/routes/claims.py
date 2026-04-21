@@ -13,6 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from pathlib import Path
+import json
 
 from db.database import get_db
 from db.models import Claim
@@ -108,6 +110,44 @@ async def process_claim(
         validation_errors=final_state.get("validation_errors") or [],
         claim_form_path=final_state.get("claim_form_path"),
     )
+
+
+@router.get("/", response_model=list[ClaimRecord])
+def list_claims(db: Session = Depends(get_db)):
+    """Return all claims ordered by created_at descending."""
+    try:
+        return (
+            db.query(Claim)
+            .order_by(Claim.created_at.desc())
+            .all()
+        )
+    except Exception as exc:
+        logger.exception("Failed to list claims: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to list claims.") from exc
+
+
+@router.get("/{claim_id}/result")
+def get_claim_result(claim_id: str):
+    """
+    Return the full claim object from the generated JSON file.
+
+    The file is written by claim_agent as ./claims/{claim_id}.json.
+    """
+    claims_dir = Path(__file__).resolve().parents[2] / "claims"
+    claims_dir.mkdir(exist_ok=True)
+    path = claims_dir / f"{claim_id}.json"
+
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Claim JSON for {claim_id!r} not found.")
+
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.exception("Invalid JSON in claim file %s: %s", path, exc)
+        raise HTTPException(status_code=500, detail="Stored claim JSON is invalid.") from exc
+    except Exception as exc:
+        logger.exception("Failed to read claim file %s: %s", path, exc)
+        raise HTTPException(status_code=500, detail="Failed to read claim JSON.") from exc
 
 
 @router.get("/{claim_id}", response_model=ClaimRecord)

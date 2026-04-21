@@ -1,0 +1,291 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-dm-sans);
+  --font-display: var(--font-syne);
+  --font-mono: var(--font-dm-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.5);
+}
+
+:root {
+  /* ================================================================= */
+  /* MediSuite — Medical Cyberpunk                                       */
+  /* Clinical Intelligence: Deep Navy + Cyan + Lime + Magenta           */
+  /* ================================================================= */
+
+  --ms-bg: #050D1A;
+  --ms-surface: rgba(0, 212, 255, 0.025);
+  --ms-surface-solid: #091223;
+  --ms-surface-2: #0c1830;
+  --ms-border: rgba(0, 212, 255, 0.08);
+  --ms-border-strong: rgba(0, 212, 255, 0.25);
+
+  /* Accent palette */
+  --ms-accent: #00D4FF;          /* Cyan — primary */
+  --ms-accent-glow: rgba(0, 212, 255, 0.35);
+  --ms-accent-dim: rgba(0, 212, 255, 0.1);
+
+  --ms-success: #00FF9C;         /* Lime — success / high confidence */
+  --ms-success-glow: rgba(0, 255, 156, 0.3);
+  --ms-success-dim: rgba(0, 255, 156, 0.1);
+
+  --ms-warning: #F59E0B;
+  --ms-warning-dim: rgba(245, 158, 11, 0.12);
+
+  --ms-error: #FF3B6B;           /* Magenta-red — errors */
+  --ms-error-glow: rgba(255, 59, 107, 0.3);
+  --ms-error-dim: rgba(255, 59, 107, 0.1);
+
+  --ms-text: #E4F0FF;
+  --ms-muted: rgba(228, 240, 255, 0.45);
+
+  /* ================================================================= */
+  /* shadcn/ui tokens                                                   */
+  /* ================================================================= */
+  color-scheme: dark;
+  --background: var(--ms-bg);
+  --foreground: var(--ms-text);
+
+  --card: var(--ms-surface-solid);
+  --card-foreground: var(--ms-text);
+
+  --popover: #091223;
+  --popover-foreground: var(--ms-text);
+
+  --primary: var(--ms-accent);
+  --primary-foreground: #000810;
+
+  --secondary: rgba(0, 212, 255, 0.05);
+  --secondary-foreground: var(--ms-text);
+
+  --muted: rgba(0, 212, 255, 0.04);
+  --muted-foreground: var(--ms-muted);
+
+  --accent: rgba(0, 212, 255, 0.1);
+  --accent-foreground: var(--ms-text);
+
+  --destructive: var(--ms-error);
+  --border: var(--ms-border);
+  --input: rgba(0, 212, 255, 0.07);
+  --ring: rgba(0, 212, 255, 0.4);
+
+  --chart-1: #00D4FF;
+  --chart-2: #00FF9C;
+  --chart-3: #7C3AED;
+  --chart-4: #F59E0B;
+  --chart-5: #FF3B6B;
+
+  --radius: 1rem;  /* 16px base */
+
+  --sidebar: #091223;
+  --sidebar-foreground: var(--ms-text);
+  --sidebar-primary: var(--ms-accent);
+  --sidebar-primary-foreground: #000810;
+  --sidebar-accent: rgba(0, 212, 255, 0.1);
+  --sidebar-accent-foreground: var(--ms-text);
+  --sidebar-border: var(--ms-border);
+  --sidebar-ring: rgba(0, 212, 255, 0.4);
+}
+
+.dark {}
+
+/* ================================================================== */
+/* Base styles                                                          */
+/* ================================================================== */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-color: var(--ms-bg);
+
+    /* 40×40px grid pattern */
+    background-image:
+      linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+      radial-gradient(ellipse at 15% 10%, rgba(0, 212, 255, 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 90%, rgba(0, 255, 156, 0.04) 0%, transparent 50%);
+    background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%;
+    background-attachment: fixed;
+  }
+}
+
+/* ================================================================== */
+/* Scanline overlay — 2px cyan line cycling every 10s                  */
+/* ================================================================== */
+@keyframes scanline {
+  0%   { transform: translateY(-4px); opacity: 0; }
+  3%   { opacity: 0.7; }
+  97%  { opacity: 0.7; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 212, 255, 0.7) 30%, rgba(0, 212, 255, 0.9) 50%, rgba(0, 212, 255, 0.7) 70%, transparent 100%);
+  animation: scanline 10s linear infinite;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ================================================================== */
+/* Glass card utility                                                   */
+/* ================================================================== */
+@layer components {
+  .glass-card {
+    background: rgba(0, 212, 255, 0.025);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 212, 255, 0.08);
+    border-radius: 16px;
+  }
+
+  .glass-card-sm {
+    background: rgba(0, 212, 255, 0.02);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 212, 255, 0.07);
+    border-radius: 12px;
+  }
+
+  /* Neon glow effects */
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 60px rgba(0, 212, 255, 0.08);
+  }
+  .glow-lime {
+    box-shadow: 0 0 20px rgba(0, 255, 156, 0.25), 0 0 60px rgba(0, 255, 156, 0.08);
+  }
+  .glow-red {
+    box-shadow: 0 0 20px rgba(255, 59, 107, 0.25), 0 0 60px rgba(255, 59, 107, 0.08);
+  }
+
+  /* Agent running glow */
+  .agent-running {
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), 0 0 80px rgba(0, 212, 255, 0.12);
+    border-color: rgba(0, 212, 255, 0.35) !important;
+  }
+
+  /* Code / ID badge */
+  .code-badge {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 6px;
+    color: #00D4FF;
+    font-family: var(--font-dm-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    transition: box-shadow 0.2s ease;
+  }
+  .code-badge:hover {
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+  }
+
+  /* Syne display font shorthand */
+  .font-display {
+    font-family: var(--font-syne);
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* ================================================================== */
+/* Agent flow line animation                                            */
+/* ================================================================== */
+@keyframes ms-flow-line {
+  0%   { transform: translateY(0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateY(64px); opacity: 0; }
+}
+.ms-flow-line {
+  animation: ms-flow-line 1.2s linear infinite;
+}
+
+/* ================================================================== */
+/* Pipeline connector dot                                               */
+/* ================================================================== */
+@keyframes ms-travel {
+  0%   { left: -6px; opacity: 0.2; }
+  25%  { opacity: 1; }
+  100% { left: calc(100% - 2px); opacity: 0.2; }
+}
+.ms-travel-dot {
+  animation: ms-travel 1.8s ease-in-out infinite;
+}
+
+/* ================================================================== */
+/* Neon pulse for status dots                                           */
+/* ================================================================== */
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+  50%       { opacity: 0.4; box-shadow: 0 0 12px currentColor; }
+}
+.neon-pulse {
+  animation: neon-pulse 1.5s ease-in-out infinite;
+}
+
+/* Shimmer gradient text */
+@keyframes text-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, #00D4FF 0%, #00FF9C 40%, #00D4FF 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: text-shimmer 3s linear infinite;
+}

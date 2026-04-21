@@ -1,0 +1,22 @@
+# MediSuite AI Agent — Cursor Rules
+# Master's Project, CSUF, CPSC 597/598
+
+## Architecture
+- Multi-agent LangGraph pipeline: Document → Coding → Validation → Claim
+- All agents are TypedDict ClaimState in/out functions
+- Embeddings: HuggingFace sentence-transformers only (pritamdeka/S-PubMedBert-MS-MARCO via ChromaDB). Do NOT use OpenAI for any embedding operations.
+- LLM: GPT-4o via langchain-openai for reasoning/reranking only (e.g. clinical entity extraction, reranking). Not for embeddings.
+- Vector DB: ChromaDB (using the above HuggingFace model)
+- Backend: FastAPI + SQLAlchemy + SQLite
+- Observability: LangSmith tracing on all LLM calls
+
+## ICD10.json structure: [{code, disease, category}]
+## CPT4.json structure: [{code, description, category}]
+## Embedding text: '{code}: {disease} [{category}]'
+
+## Key rules
+- Never raise exceptions from agent functions — catch and log
+- Always decorate LLM calls with @traceable from langsmith
+- All LLM responses must be valid JSON — use json.loads() with try/except
+- Confidence threshold: 0.80 (from env CONFIDENCE_THRESHOLD)
+- Max revalidation attempts: 2 (prevent infinite loops)

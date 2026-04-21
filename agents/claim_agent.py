@@ -154,11 +154,16 @@ def claim_agent(state: ClaimState) -> ClaimState:
 
         logger.info("claim_agent: generated %s", form_path)
 
+        # If validation did not pass (retries exhausted), flag the status so
+        # consumers know the claim was force-generated with warnings.
+        validation_passed = state.get("validation_passed")
+        status = "claim_generated" if validation_passed else "claim_generated_with_warnings"
+
         return {
             **state,
             "claim_id": claim_id,
             "claim_form_path": form_path,
-            "processing_status": "claim_generated",
+            "processing_status": status,
         }
 
     except Exception as e:

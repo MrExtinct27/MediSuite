@@ -18,7 +18,9 @@ def route_after_validation(state: ClaimState) -> str:
     - validation_passed=True  → 'claim_agent'
     - validation_passed=False and revalidation_count < MAX_REVALIDATION_ATTEMPTS
                                → 'coding_agent'  (retry with same entities)
-    - validation_passed=False and retries exhausted → '__end__'
+    - validation_passed=False and retries exhausted → 'claim_agent'
+      (force-generate claim with warnings; processing_status is set to
+       'claim_generated_with_warnings' by claim_agent reading validation_passed=False)
     """
     if state.get("validation_passed"):
         return "claim_agent"
@@ -27,4 +29,5 @@ def route_after_validation(state: ClaimState) -> str:
     if attempts < MAX_REVALIDATION_ATTEMPTS:
         return "coding_agent"
 
-    return "__end__"
+    # Retries exhausted — always generate the claim rather than silently ending.
+    return "claim_agent"

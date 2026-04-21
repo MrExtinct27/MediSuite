@@ -52,6 +52,130 @@ def _build_retrieval_query(item: dict[str, Any]) -> str:
     return f"{description} {source_snippet}".strip()
 
 
+# Keyword patterns used to build more specific CPT-4 retrieval queries.
+# Tuples of (substring_to_match, expanded_search_terms).
+_CPT4_QUERY_EXPANSIONS: list[tuple[str, str]] = [
+    # Office / outpatient evaluation & management
+    ("office visit",         "office outpatient visit evaluation management established"),
+    ("outpatient visit",     "office outpatient visit evaluation management established"),
+    ("established patient",  "office outpatient visit evaluation management established"),
+    ("new patient",          "office outpatient visit evaluation management new patient"),
+    ("office evaluation",    "office outpatient visit evaluation management established"),
+    ("clinic visit",         "office outpatient visit evaluation management"),
+    # Neurological / cognitive exams
+    ("neurological exam",    "evaluation management office visit neurological examination"),
+    ("neuro exam",           "evaluation management office visit neurological examination"),
+    ("cognitive",            "evaluation management office visit cognitive assessment"),
+    ("mental status",        "evaluation management office visit cognitive mental status"),
+    # CT scans
+    ("ct head",              "CT head brain without contrast"),
+    ("ct scan head",         "CT head brain without contrast"),
+    ("ct of head",           "CT head brain without contrast"),
+    ("ct brain",             "CT head brain without contrast"),
+    ("ct scan brain",        "CT head brain without contrast"),
+    ("ct chest",             "CT thorax chest without contrast"),
+    ("ct abdomen",           "CT abdomen pelvis without contrast"),
+    ("ct pelvis",            "CT abdomen pelvis without contrast"),
+    ("ct spine",             "CT spine cervical lumbar without contrast"),
+    # MRI
+    ("mri head",             "MRI brain head without contrast"),
+    ("mri brain",            "MRI brain head without contrast"),
+    ("mri spine",            "MRI spine cervical lumbar without contrast"),
+    # Ultrasound / echo exams
+    ("echo exam abdomen limited",   "echo exam abdomen limited ultrasound 76705"),
+    ("echo exam abdomen",           "echo exam abdomen complete ultrasound 76700"),
+    ("echo exam pelvis",            "echo exam pelvis ultrasound 76856"),
+    ("echo exam renal",             "echo exam renal kidney ultrasound 76770"),
+    ("echo exam thyroid",           "echo exam thyroid ultrasound 76536"),
+    ("abdominal ultrasound",        "echo exam abdomen complete ultrasound 76700"),
+    ("ultrasound abdomen",          "echo exam abdomen complete ultrasound 76700"),
+    ("limited ultrasound",          "echo exam abdomen limited ultrasound 76705"),
+    ("limited abdominal",           "echo exam abdomen limited ultrasound 76705"),
+    ("single organ ultrasound",     "echo exam abdomen limited ultrasound 76705"),
+    ("ultrasound pelvis",           "echo exam pelvis ultrasound 76856"),
+    ("pelvic ultrasound",           "echo exam pelvis ultrasound 76856"),
+    ("ultrasound renal",            "echo exam renal kidney ultrasound 76770"),
+    ("kidney ultrasound",           "echo exam renal kidney ultrasound 76770"),
+    ("ultrasound thyroid",          "echo exam thyroid ultrasound 76536"),
+    ("ultrasound vascular",         "duplex scan vascular ultrasound 93971"),
+    ("duplex scan",                 "duplex scan vascular ultrasound 93971"),
+    ("ob ultrasound",               "ultrasound obstetric 76801"),
+    ("obstetric ultrasound",        "ultrasound obstetric 76801"),
+    ("echocardiogram",              "echocardiography transthoracic 93306"),
+    ("cardiac echo",                "echocardiography transthoracic 93306"),
+    ("transthoracic echo",          "echocardiography transthoracic 93306"),
+    # Generic ultrasound fallback — after all specific patterns above
+    ("ultrasound",                  "echo exam ultrasound diagnostic"),
+    # X-rays
+    ("chest x-ray",          "radiograph chest x-ray"),
+    ("xray chest",           "radiograph chest x-ray"),
+    # Lab / panels
+    ("metabolic panel",      "comprehensive metabolic panel laboratory"),
+    ("cmp",                  "comprehensive metabolic panel laboratory"),
+    ("bmp",                  "basic metabolic panel laboratory"),
+    ("cbc",                  "complete blood count laboratory"),
+    ("blood count",          "complete blood count laboratory"),
+    ("hemoglobin a1c",       "hemoglobin glycosylated A1c laboratory"),
+    ("hba1c",                "hemoglobin glycosylated A1c laboratory"),
+    ("a1c",                  "hemoglobin glycosylated A1c laboratory"),
+    ("urinalysis",           "urinalysis laboratory"),
+    # Emergency department visits (99281-99285 range, NOT critical care 99291)
+    ("emergency department visit mild",              "emergency department visit evaluation management 99281"),
+    ("emergency department visit low complexity",    "emergency department visit evaluation management 99282"),
+    ("emergency department visit moderate",          "emergency department visit evaluation management 99283"),
+    ("emergency department visit high complexity",   "emergency department visit evaluation management 99284"),
+    ("emergency department visit severe",            "emergency department visit evaluation management 99285"),
+    # Generic ED fallback — after the specific severity entries above
+    ("emergency department visit",  "emergency department visit evaluation management"),
+    ("emergency department",        "emergency department visit evaluation management"),
+    ("emergency room",              "emergency department visit evaluation management"),
+    # Critical care — only when explicitly documented
+    ("critical care",               "critical care evaluation management 99291 99292"),
+    ("critically ill",              "critical care evaluation management 99291 99292"),
+    # Procedures
+    ("nebulizer",            "nebulizer treatment respiratory"),
+    ("ecg",                  "electrocardiogram ECG tracing interpretation"),
+    ("ekg",                  "electrocardiogram ECG tracing interpretation"),
+    ("spirometry",           "pulmonary function spirometry"),
+    ("injection",            "therapeutic injection"),
+]
+
+
+def _build_cpt4_query(proc: dict[str, Any]) -> str:
+    """
+    Build a specific CPT-4 retrieval query from a procedure entity.
+
+    Strategy (in priority order):
+    1. Pattern-match the description against known CPT-4 query expansions so the
+       HuggingFace embedding lands in the correct code cluster.
+    2. Fall back to the generic description + source_text approach.
+
+    For procedures, extracting the EXACT service type produces much better
+    ChromaDB retrieval results:
+      - 'Office visit established patient moderate complexity'
+        → 'office outpatient visit evaluation management established'
+      - 'CT scan of head'
+        → 'CT head brain without contrast'
+      - 'neurological examination'
+        → 'evaluation management office visit neurological examination'
+    """
+    description = (proc.get("description", "") or "").strip()
+    source_text  = (proc.get("source_text",  "") or "").strip()
+    description_lower = description.lower()
+
+    for substring, expanded in _CPT4_QUERY_EXPANSIONS:
+        if substring in description_lower:
+            # Append source snippet for additional context
+            source_snippet = source_text[:200].strip()
+            query = f"{expanded} {source_snippet}".strip()
+            logger.debug("CPT-4 query expansion: '%s' → '%s'", description[:60], expanded)
+            return query
+
+    # No pattern matched — fall back to generic query
+    source_snippet = source_text[:300].strip()
+    return f"{description} {source_snippet}".strip()
+
+
 def _retrieve_icd10_candidates(entities: dict[str, Any]) -> list[dict]:
     """
     For each diagnosis in extracted_entities, run semantic search and
@@ -80,8 +204,15 @@ def _retrieve_icd10_candidates(entities: dict[str, Any]) -> list[dict]:
 
 def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
     """
-    For each procedure in extracted_entities, run semantic search and
-    collect unique CPT-4 candidates (deduped by code, keeping highest score).
+    For each procedure in extracted_entities, collect CPT-4 candidates via one of two paths:
+
+    Fast path — explicit CPT code:
+      When the document_agent already captured a CPT code number in the procedure's "cpt_code"
+      field (e.g. the plan section said "CPT 76705"), inject a synthetic candidate directly
+      into the seen dict at score=1.0 and skip ChromaDB retrieval for that procedure.
+
+    Standard path — ChromaDB semantic search:
+      Build a specific query via _build_cpt4_query and run HuggingFace-embedded search.
     """
     procedures = entities.get("procedures", []) or []
     seen: dict[str, dict] = {}
@@ -89,7 +220,27 @@ def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
     for proc in procedures:
         if not isinstance(proc, dict):
             continue
-        query = _build_retrieval_query(proc)
+
+        explicit_code = (proc.get("cpt_code") or "").strip()
+        description   = (proc.get("description", "") or "").strip()
+
+        # --- Fast path: explicit CPT code bypasses ChromaDB ---
+        if explicit_code:
+            if explicit_code not in seen:
+                seen[explicit_code] = {
+                    "code":        explicit_code,
+                    "description": description,
+                    "category":    "explicit",
+                    "score":       1.0,
+                }
+                logger.debug(
+                    "CPT-4 fast path: explicit code %s for '%s' — skipping ChromaDB",
+                    explicit_code, description[:60],
+                )
+            continue  # no ChromaDB search needed for this procedure
+
+        # --- Standard path: semantic retrieval via HuggingFace embeddings ---
+        query = _build_cpt4_query(proc)
         if not query:
             continue
         try:
@@ -99,7 +250,7 @@ def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
                 if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
                     seen[code] = c
         except Exception as e:
-            logger.exception("CPT-4 retrieval error for procedure '%s': %s", proc.get("description", ""), e)
+            logger.exception("CPT-4 retrieval error for procedure '%s': %s", description, e)
 
     return list(seen.values())
 
@@ -111,7 +262,40 @@ def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
 _ICD10_SYSTEM_PROMPT = """\
 You are a certified medical coding specialist (CPC) with expertise in ICD-10 coding. \
 Your task is to select the most accurate ICD-10 codes from the provided candidates \
-based on the clinical documentation."""
+based on the clinical documentation.
+
+EXTERNAL CAUSE CODES — Required supplementary codes on all injury claims:
+External cause codes (ICD-10 W/X/Y chapter) describe HOW, WHERE, and the ACTIVITY at the
+time of injury. Always select them from the candidate list when the note documents an injury
+with stated circumstances. Select one code per category when candidates are available.
+
+HOW the injury occurred (mechanism):
+- Falling object / struck by object     → W20.8XXA
+- Unspecified fall                      → W19.XXXA
+- Motor vehicle accident                → V-code from candidates
+- Assault                               → X-code from candidates
+
+WHERE it happened (Y92 place-of-occurrence codes):
+- Home kitchen                          → Y92.010
+- Home bedroom                          → Y92.011
+- Home (unspecified)                    → Y92.009
+- Workplace                             → Y92.2
+- Street / highway                      → Y92.41
+- School                                → Y92.21
+- Sports / athletic area                → Y92.3
+
+ACTIVITY at time of injury (Y93 codes):
+- Cooking / baking                      → Y93.G3
+- Sports / exercise                     → Y93 sport code from candidates
+- Working / occupational                → Y93.89
+- Leisure / recreation                  → Y93.E9
+
+Selection rules for external cause codes:
+- Only select external cause codes when the note EXPLICITLY documents an injury AND its circumstances.
+- External cause codes are NEVER the primary diagnosis — always list them after the injury code.
+- Do NOT select external cause codes for non-injury visits (chronic disease, routine follow-up).
+- If no external cause candidate is in the list, do not invent one; note the gap in reasoning_chain.\
+"""
 
 _ICD10_USER_TEMPLATE = """\
 You will receive:
@@ -125,7 +309,7 @@ Your response MUST be valid JSON in this exact format:
       "code": "exact ICD-10 code from candidates",
       "disease": "disease description",
       "confidence": 0.0-1.0,
-      "reasoning": "step-by-step explanation of why this code applies",
+      "reasoning": "authoritative explanation citing exact CMS guideline or clinical evidence supporting this code — never hedge if the code selection is guideline-compliant",
       "citation": "exact text from the clinical document supporting this code"
     }}
   ],
@@ -137,7 +321,20 @@ Step 1: Identify the primary diagnosis from the clinical entities
 Step 2: Review each candidate code description carefully
 Step 3: Match code specificity to documentation (use most specific code supported)
 Step 4: Check if secondary diagnoses need separate codes
-Step 5: Assign confidence: >0.90 certain, 0.80-0.90 probable, <0.80 uncertain
+Step 5: EXTERNAL CAUSE CHECK — if the note documents an injury with circumstances:
+        a) Select the injury mechanism code (W/X/Y) from candidates
+        b) Select the place-of-occurrence code (Y92.xxx) from candidates if documented
+        c) Select the activity code (Y93.xxx) from candidates if documented
+        External cause codes must follow the primary injury code in selected_codes order.
+        Skip this step entirely for non-injury visits.
+
+Coding confidence rules:
+- When documentation states 'hypertension' without further specification, I10 (Essential hypertension) IS the correct and most specific code per CMS guidelines. State this confidently — never express uncertainty about I10 selection.
+- When a diagnosis matches a candidate code exactly or near-exactly, assign confidence >= 0.90 and state the match clearly.
+- Never say 'most likely' or 'given lack of specification' — if the code is correct per CMS guidelines, state it as fact.
+- Only express uncertainty (confidence < 0.80) when the clinical documentation is genuinely ambiguous or incomplete.
+
+Step 6: Assign confidence: >0.90 certain, 0.80-0.90 probable, <0.80 uncertain
 
 Only select codes from the provided candidates list. Maximum {max_codes} codes.
 If no candidate is appropriate, return an empty selected_codes array.
@@ -153,7 +350,45 @@ JSON only, no markdown:"""
 _CPT4_SYSTEM_PROMPT = """\
 You are a certified medical coding specialist (CPC) with expertise in CPT-4 procedure coding. \
 Your task is to select the most accurate CPT-4 codes from the provided candidates \
-based on the clinical documentation."""
+based on the clinical documentation.
+
+For procedure type identification, extract the EXACT service type from the documentation:
+- "Office visit established patient moderate complexity"
+  → search for and prefer: office outpatient visit established moderate (99213-99214)
+- "CT scan of head"
+  → search for and prefer: CT head brain without contrast (70450-70470)
+- "neurological examination" or "neuro exam"
+  → search for and prefer: evaluation management office visit (99202-99215)
+
+Code selection rules:
+- Always prefer E/M codes (99201-99215) for office visits over any procedure-specific code.
+- Never select an unlisted procedure code (any code ending in 99, such as 99199, 93799, etc.) \
+  when a specific code exists in the candidates list.
+- When multiple E/M candidates exist, select the level that matches the documented complexity: \
+  low=99202/99212, moderate=99203/99213/99214, high=99205/99215.
+- When a specific imaging code exists (e.g. 70450 CT head), prefer it over a general radiology code.
+- Always select imaging procedure codes separately from E/M codes. Never merge or omit an imaging
+  procedure that is present in the candidate list.
+- Ultrasound / echo exam codes: prefer 76700 (complete abdominal), 76705 (limited), 76856 (pelvis),
+  76770 (renal), 76536 (thyroid) when the candidate list contains them.
+- Candidates with category="explicit" were extracted directly from a CPT code stated in the note —
+  always include them in selected_codes with confidence=1.0 and cite the source_text.
+
+Emergency department complexity mapping:
+- mild/minor                     → 99281
+- low complexity                 → 99282
+- moderate complexity            → 99283
+- high complexity / urgent       → 99284
+- severe / immediately life threatening → 99285
+
+CRITICAL distinction — Emergency Department vs Critical Care:
+- Only select 99291 (critical care, first hour) when the clinical note EXPLICITLY contains \
+  the words "critical care" or "critically ill".
+- A high-complexity or severe ED visit is 99284 or 99285, NOT 99291. \
+  These are entirely different service types with different billing requirements.
+- If the note says "high severity", "urgent", "immediately life threatening", or any similar \
+  language WITHOUT the explicit phrase "critical care" or "critically ill", select 99284/99285, \
+  never 99291."""
 
 _CPT4_USER_TEMPLATE = """\
 You will receive:
@@ -176,10 +411,14 @@ Your response MUST be valid JSON in this exact format:
 
 Chain-of-thought rules:
 Step 1: Identify the primary procedure from the clinical entities
-Step 2: Review each candidate code description carefully
-Step 3: Match code specificity to documentation (use most specific code supported)
-Step 4: Check if additional procedures need separate codes
-Step 5: Assign confidence: >0.90 certain, 0.80-0.90 probable, <0.80 uncertain
+Step 2: Determine service type — is this an office visit/E&M, imaging, lab, or procedure?
+Step 3: If E&M: prefer 99201-99215 range; match complexity level to documentation
+Step 4: If imaging (CT/MRI/X-ray): select the most specific anatomic code available
+Step 5: Review each candidate description carefully; eliminate unlisted codes (ending in 99)
+        if any specific code is available in the candidate list
+Step 6: Match code specificity to documentation (use most specific code supported)
+Step 7: Check if additional procedures need separate codes
+Step 8: Assign confidence: >0.90 certain, 0.80-0.90 probable, <0.80 uncertain
 
 Only select codes from the provided candidates list. Maximum {max_codes} codes.
 If no candidate is appropriate, return an empty selected_codes array.

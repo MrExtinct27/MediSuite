@@ -154,6 +154,23 @@ Check for these issues:
 3. Missing secondary codes: Should any complicating conditions be separately coded?
 4. Suspicious combinations: Any code combinations that seem clinically implausible?
 
+Severity rules — use these strictly:
+- CRITICAL: Only when a code is completely unrelated to the documented condition and \
+would cause claim denial (e.g. a cardiology code on an orthopedic claim). \
+Do NOT use CRITICAL for codes in the same family or category as the ideal code.
+- WARNING: Use for near-miss codes — same procedure family or category as the best \
+available option (e.g. different CT scan variants, different E/M levels). \
+This is the correct severity when the coding agent selected the best available candidate \
+from the knowledge base but a more specific code might exist.
+- INFO: Documentation suggestions, secondary code recommendations, or observations \
+that do not affect claim approval.
+
+When validating CPT codes: only raise CRITICAL errors for codes that are completely \
+unrelated to the documented procedure. For near-miss codes in the same category \
+(e.g. different CT scan variants, different imaging modalities of the same region), \
+use WARNING not CRITICAL. A claim should only fail when a code would clearly cause \
+claim denial, not when a slightly more specific code could have been chosen.
+
 Return ONLY valid JSON:
 {
   "issues": [
@@ -302,12 +319,18 @@ def validation_agent(state: ClaimState) -> ClaimState:
         all_errors.extend(l3_errors)
         logger.info("validation_agent Level 3: %d issue(s)", len(l3_errors))
 
+        # validation_passed = True  when zero CRITICAL errors (warnings are acceptable)
+        # validation_passed = False only when there is at least one CRITICAL error
         has_critical = any(e.get("severity") == "critical" for e in all_errors)
         validation_passed = not has_critical
 
+        warning_count = sum(1 for e in all_errors if e.get("severity") == "warning")
         logger.info(
-            "validation_agent complete: %d total issue(s), passed=%s",
+            "validation_agent complete: %d total issue(s) "
+            "(%d critical, %d warning), passed=%s",
             len(all_errors),
+            sum(1 for e in all_errors if e.get("severity") == "critical"),
+            warning_count,
             validation_passed,
         )
 

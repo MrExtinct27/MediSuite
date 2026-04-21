@@ -85,3 +85,7 @@ tessdata/
 *.ppm
 *.pbm
 .cursorrules
+
+tests/
+claims/
+knowledge_base/
