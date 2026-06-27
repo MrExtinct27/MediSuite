@@ -32,6 +32,9 @@ export interface Claim {
     name: string;
     dob: string;
     insurance_id: string;
+    sex?: string | null;
+    address?: string | null;
+    insurance_provider?: string | null;
   };
   service_date: string;
   provider_name: string;
@@ -42,6 +45,14 @@ export interface Claim {
   validation_errors: ValidationError[];
   explainability: Explainability;
   processing_status: string;
+}
+
+export interface ClaimSummary {
+  claim_id: string;
+  patient_name: string | null;
+  service_date: string | null;
+  validation_status: string; // "passed" | "failed"
+  avg_confidence: number;    // 0.0 – 1.0
 }
 
 export type AgentStatus = "idle" | "running" | "complete" | "error";

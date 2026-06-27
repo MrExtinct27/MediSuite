@@ -21,6 +21,33 @@ from orchestrator.state import ClaimState
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# PHI masking — used for LangSmith trace inputs only; never for agent logic
+# ---------------------------------------------------------------------------
+
+_PHI_FIELDS = [
+    "patient_name", "patient_dob", "patient_insurance_id",
+    "name", "dob", "insurance_id",
+]
+
+
+def mask_phi_for_logging(state: dict) -> dict:
+    """Return a shallow copy of state with PHI fields and raw document replaced."""
+    masked = state.copy()
+    for field in _PHI_FIELDS:
+        if masked.get(field):
+            masked[field] = "[PHI-REDACTED]"
+    if "raw_document_text" in masked:
+        masked["raw_document_text"] = "[DOCUMENT-REDACTED]"
+    return masked
+
+
+def _mask_doc_trace_inputs(inputs: dict) -> dict:
+    """process_inputs hook for @traceable — redacts the raw document text."""
+    if "text" in inputs:
+        return {**inputs, "text": "[DOCUMENT-REDACTED]"}
+    return inputs
+
 # --- Step 1: Document extraction ---
 
 
@@ -306,7 +333,7 @@ JSON only, no markdown:\
 """
 
 
-@traceable(name="document_agent_extract_entities")
+@traceable(name="document_agent_extract_entities", process_inputs=_mask_doc_trace_inputs)
 def _extract_entities_with_llm(text: str) -> dict[str, Any] | None:
     """Call GPT-4o via langchain-openai; return parsed JSON or None."""
     if not text or not text.strip():

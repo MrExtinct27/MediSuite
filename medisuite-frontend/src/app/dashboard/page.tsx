@@ -13,77 +13,50 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Claim, DiagnosisCode } from "@/lib/types";
+import type { ClaimSummary } from "@/lib/types";
 import { api } from "@/lib/api";
 import { Sidebar } from "@/components/layout/Sidebar";
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
-const MOCK_CLAIMS: Claim[] = [
+const MOCK_CLAIMS: ClaimSummary[] = [
   {
     claim_id: "f52fa36a-09d3-44ec-aec8-d092ab0a0a57",
-    form_type: "CMS-1500",
-    generated_at: new Date().toISOString(),
-    patient: { name: "John Smith", dob: "1972-03-15", insurance_id: "BCB123456" },
+    patient_name: "John Smith",
     service_date: "2025-01-10",
-    provider_name: "Dr. Alice Carter",
-    facility_name: "Cypress Medical Center",
-    diagnosis_codes: [
-      { code: "E11.21", description: "Type 2 diabetes mellitus with nephropathy", confidence: 0.95 },
-      { code: "I10", description: "Essential (primary) hypertension", confidence: 0.9 },
-    ],
-    procedure_codes: [{ code: "99214", description: "Office outpatient visit", confidence: 0.9 }],
-    validation_status: "passed", validation_errors: [],
-    explainability: { icd10_reasoning: [], cpt4_reasoning: [], citations: [], icd10_reasoning_chain: "", cpt4_reasoning_chain: "" },
-    processing_status: "claim_generated",
+    validation_status: "passed",
+    avg_confidence: 0.92,
   },
   {
     claim_id: "321093b7-9045-4ee0-8463-838c343dec0f",
-    form_type: "CMS-1500",
-    generated_at: new Date().toISOString(),
-    patient: { name: "Maria Lopez", dob: "1984-09-03", insurance_id: "AET987654" },
+    patient_name: "Maria Lopez",
     service_date: "2025-01-09",
-    provider_name: "Dr. Ryan Lee",
-    facility_name: "OC Renal Clinic",
-    diagnosis_codes: [
-      { code: "N18.3", description: "Chronic kidney disease, stage 3", confidence: 0.93 },
-      { code: "E11.21", description: "Type 2 diabetes mellitus with nephropathy", confidence: 0.96 },
-    ],
-    procedure_codes: [
-      { code: "80053", description: "Comprehensive metabolic panel", confidence: 0.89 },
-      { code: "83036", description: "Hemoglobin A1c", confidence: 0.91 },
-    ],
-    validation_status: "warning",
-    validation_errors: [{ field: "icd10:E11.21", message: "Possible missing secondary code", severity: "warning" }],
-    explainability: { icd10_reasoning: [], cpt4_reasoning: [], citations: [], icd10_reasoning_chain: "", cpt4_reasoning_chain: "" },
-    processing_status: "claim_generated",
+    validation_status: "failed",
+    avg_confidence: 0.91,
   },
   {
     claim_id: "c0ffee00-0000-0000-0000-000000000000",
-    form_type: "CMS-1500",
-    generated_at: new Date().toISOString(),
-    patient: { name: "Daniel Kim", dob: "1990-11-22", insurance_id: "UHC445566" },
+    patient_name: "Daniel Kim",
     service_date: "2025-01-08",
-    provider_name: "Dr. Sarah Ahmed",
-    facility_name: "Fullerton Family Practice",
-    diagnosis_codes: [{ code: "J45.40", description: "Moderate persistent asthma", confidence: 0.92 }],
-    procedure_codes: [{ code: "94640", description: "Nebulizer treatment", confidence: 0.88 }],
-    validation_status: "passed", validation_errors: [],
-    explainability: { icd10_reasoning: [], cpt4_reasoning: [], citations: [], icd10_reasoning_chain: "", cpt4_reasoning_chain: "" },
-    processing_status: "claim_generated",
+    validation_status: "passed",
+    avg_confidence: 0.9,
   },
 ];
 
 interface Stats { totalClaims: number; passedValidation: number; avgConfidence: number; flaggedClaims: number; }
 
-function computeStats(claims: Claim[]): Stats {
-  let passedValidation = 0, flaggedClaims = 0, confidenceSum = 0, confidenceCount = 0;
+function computeStats(claims: ClaimSummary[]): Stats {
+  let passedValidation = 0, flaggedClaims = 0, confidenceSum = 0;
   for (const c of claims) {
     if (c.validation_status === "passed") passedValidation++;
-    if (c.validation_errors?.length) flaggedClaims++;
-    const all: DiagnosisCode[] = [...(c.diagnosis_codes ?? []), ...(c.procedure_codes ?? [])];
-    for (const d of all) { confidenceSum += d.confidence ?? 0; confidenceCount++; }
+    else flaggedClaims++;
+    confidenceSum += c.avg_confidence ?? 0;
   }
-  return { totalClaims: claims.length, passedValidation, flaggedClaims, avgConfidence: confidenceCount ? confidenceSum / confidenceCount : 0 };
+  return {
+    totalClaims: claims.length,
+    passedValidation,
+    flaggedClaims,
+    avgConfidence: claims.length ? confidenceSum / claims.length : 0,
+  };
 }
 
 /* ─── Animated counter ──────────────────────────────────────────────── */
@@ -125,27 +98,79 @@ function StatCard({ label, rawValue, decimals = 0, suffix = "", accentColor, ind
 }
 
 /* ─── Confidence sparkline ──────────────────────────────────────────── */
-function ConfidenceSparkline() {
-  const data = [78, 82, 75, 89, 85, 94, 91, 88, 95, 97, 93, 96, 94.8];
+// Round to 2 decimals so SSR and client serialize coordinates to identical
+// strings (avoids float-precision hydration mismatches like 11.7165...874 vs ...595).
+function r2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function SparklineCard({ children }: { children: React.ReactNode }) {
+  return <div className="glass-card p-5">{children}</div>;
+}
+
+function SparklineHeader() {
+  return (
+    <p
+      className="mb-4 text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.5)]"
+      style={{ fontFamily: "var(--font-dm-mono)" }}
+    >
+      Confidence Trend
+    </p>
+  );
+}
+
+function ConfidenceSparkline({ claims }: { claims: ClaimSummary[] }) {
+  // Belt-and-suspenders: render the chart only after client mount so there is
+  // no SSR markup to mismatch against. The placeholder keeps layout stable.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Real data: avg_confidence per claim, oldest → newest. The API returns
+  // claims newest-first, so reverse to get chronological order.
+  const data = [...claims]
+    .reverse()
+    .map((c) => (c.avg_confidence ?? 0) * 100);
+
+  if (!mounted) {
+    return <SparklineCard><SparklineHeader /><div style={{ height: 124 }} /></SparklineCard>;
+  }
+
+  // Fewer than 2 real claims → a single point isn't a meaningful trend.
+  if (data.length < 2) {
+    return (
+      <SparklineCard>
+        <SparklineHeader />
+        <div className="flex h-[124px] items-center justify-center">
+          <p
+            className="text-xs text-[rgba(228,240,255,0.4)]"
+            style={{ fontFamily: "var(--font-dm-mono)" }}
+          >
+            Not enough data yet
+          </p>
+        </div>
+      </SparklineCard>
+    );
+  }
+
   const W = 280, H = 100;
-  const min = Math.min(...data) - 5;
-  const max = Math.max(...data) + 2;
+  const rawMin = Math.min(...data);
+  const rawMax = Math.max(...data);
+  // Add a little headroom; guard against a flat line (all values equal).
+  const min = rawMin === rawMax ? rawMin - 5 : rawMin - 2;
+  const max = rawMin === rawMax ? rawMax + 5 : rawMax + 2;
   const pts = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * W;
-    const y = H - ((d - min) / (max - min)) * H * 0.85 - H * 0.05;
+    const x = r2((i / (data.length - 1)) * W);
+    const y = r2(H - ((d - min) / (max - min)) * H * 0.85 - H * 0.05);
     return [x, y] as [number, number];
   });
   const pathD = `M ${pts.map(([x, y]) => `${x},${y}`).join(" L ")}`;
   const areaD = `${pathD} L ${W},${H} L 0,${H} Z`;
 
+  const overallAvg = data.reduce((a, b) => a + b, 0) / data.length;
+
   return (
-    <div className="glass-card p-5">
-      <p
-        className="mb-4 text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.5)]"
-        style={{ fontFamily: "var(--font-dm-mono)" }}
-      >
-        Confidence Trend
-      </p>
+    <SparklineCard>
+      <SparklineHeader />
 
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 100 }}>
         <defs>
@@ -158,19 +183,6 @@ function ConfidenceSparkline() {
             <stop offset="100%" stopColor="#00D4FF" stopOpacity="0" />
           </linearGradient>
         </defs>
-
-        {/* Vertical bar hints */}
-        {pts.map(([x], i) => (
-          <rect
-            key={i}
-            x={x - 3}
-            y={H * (0.1 + Math.random() * 0.3)}
-            width={6}
-            height={H * (0.1 + Math.random() * 0.4)}
-            fill="#00D4FF"
-            opacity={0.08}
-          />
-        ))}
 
         {/* Area fill */}
         <path d={areaD} fill="url(#sparkFill)" />
@@ -189,29 +201,37 @@ function ConfidenceSparkline() {
         />
 
         {/* Last data point dot */}
-        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r={4} fill="#00FF9C" />
-        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r={8} fill="#00FF9C" opacity={0.2} />
+        <circle cx={r2(pts[pts.length - 1][0])} cy={r2(pts[pts.length - 1][1])} r={4} fill="#00FF9C" />
+        <circle cx={r2(pts[pts.length - 1][0])} cy={r2(pts[pts.length - 1][1])} r={8} fill="#00FF9C" opacity={0.2} />
       </svg>
 
-      <p
-        className="mt-3 text-right text-xl font-bold text-[#00FF9C]"
-        style={{ fontFamily: "var(--font-dm-mono)" }}
-      >
-        94.8%
-      </p>
-    </div>
+      <div className="mt-3 flex items-baseline justify-between">
+        <span
+          className="text-[9px] uppercase tracking-widest text-[rgba(228,240,255,0.4)]"
+          style={{ fontFamily: "var(--font-dm-mono)" }}
+        >
+          Avg confidence · {data.length} claims
+        </span>
+        <span
+          className="text-xl font-bold text-[#00FF9C]"
+          style={{ fontFamily: "var(--font-dm-mono)" }}
+        >
+          {overallAvg.toFixed(1)}%
+        </span>
+      </div>
+    </SparklineCard>
   );
 }
 
 /* ─── Page ──────────────────────────────────────────────────────────── */
 export default function DashboardPage() {
-  const [claims, setClaims] = useState<Claim[]>([]);
+  const [claims, setClaims] = useState<ClaimSummary[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const res = await api.get<Claim[]>("/claims");
+        const res = await api.get<ClaimSummary[]>("/claims");
         if (!cancelled) setClaims(res.data);
       } catch {
         if (!cancelled) setClaims(MOCK_CLAIMS);
@@ -290,7 +310,7 @@ export default function DashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="border-b border-[rgba(0,212,255,0.06)] hover:bg-transparent">
-                    {["Claim ID", "Patient", "Date", "ICD-10", "Status", "Conf %", ""].map((h) => (
+                    {["Claim ID", "Patient", "Date", "Status", ""].map((h) => (
                       <TableHead
                         key={h}
                         className="text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.35)]"
@@ -303,12 +323,9 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {displayClaims.map((claim, idx) => {
-                    const codes = claim.diagnosis_codes ?? [];
-                    const maxConf = codes.length ? Math.max(...codes.map((c) => c.confidence ?? 0)) : 0;
                     const passed = claim.validation_status === "passed";
-                    const hasWarn = (claim.validation_errors?.length ?? 0) > 0;
-                    const statusColor = passed ? "#00FF9C" : hasWarn ? "#F59E0B" : "rgba(228,240,255,0.3)";
-                    const statusLabel = passed ? "PASSED" : hasWarn ? "WARNING" : "UNKNOWN";
+                    const statusColor = passed ? "#00FF9C" : "#F59E0B";
+                    const statusLabel = passed ? "PASSED" : "FLAGGED";
 
                     return (
                       <motion.tr
@@ -331,28 +348,13 @@ export default function DashboardPage() {
                           className="text-sm text-[#E4F0FF]"
                           style={{ fontFamily: "var(--font-dm-sans)" }}
                         >
-                          {claim.patient?.name}
+                          {claim.patient_name?.trim() ? claim.patient_name : "N/A"}
                         </TableCell>
                         <TableCell
                           className="text-[11px] text-[rgba(228,240,255,0.45)]"
                           style={{ fontFamily: "var(--font-dm-mono)" }}
                         >
                           {claim.service_date ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {codes.slice(0, 2).map((c) => (
-                              <span key={c.code} className="code-badge">{c.code}</span>
-                            ))}
-                            {codes.length > 2 && (
-                              <span
-                                className="text-[10px] text-[rgba(228,240,255,0.35)]"
-                                style={{ fontFamily: "var(--font-dm-mono)" }}
-                              >
-                                +{codes.length - 2}
-                              </span>
-                            )}
-                          </div>
                         </TableCell>
                         <TableCell>
                           <span
@@ -366,15 +368,6 @@ export default function DashboardPage() {
                           >
                             {statusLabel}
                           </span>
-                        </TableCell>
-                        <TableCell
-                          className="text-[11px] font-bold"
-                          style={{
-                            fontFamily: "var(--font-dm-mono)",
-                            color: maxConf >= 0.9 ? "#00FF9C" : maxConf >= 0.7 ? "#F59E0B" : "#FF3B6B",
-                          }}
-                        >
-                          {maxConf ? `${Math.round(maxConf * 100)}%` : "—"}
                         </TableCell>
                         <TableCell className="text-right">
                           <Link
@@ -398,7 +391,7 @@ export default function DashboardPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.55, duration: 0.5 }}
             >
-              <ConfidenceSparkline />
+              <ConfidenceSparkline claims={claims} />
             </motion.div>
           </section>
         </main>

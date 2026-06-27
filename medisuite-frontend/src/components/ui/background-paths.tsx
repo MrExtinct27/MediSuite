@@ -49,7 +49,7 @@ export function HeroSection() {
   const titleWords = ["AGENTIC AI For", "MEDICAL CLAIMS"];
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-[#050D1A]">
+    <div className="relative -mt-20 min-h-screen w-full flex items-center justify-center overflow-hidden bg-[#050D1A]">
       {/* Grid background */}
       <div
         className="absolute inset-0"

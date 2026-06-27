@@ -19,7 +19,10 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from api.limiter import limiter
 from api.routes import claims as claims_router
 from db.database import init_db
 from knowledge_base.embeddings import ensure_collections
@@ -36,6 +39,8 @@ app = FastAPI(
     description="Automated ICD-10 / CPT-4 medical claims processing pipeline.",
     version="1.0.0",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -89,3 +94,4 @@ def health() -> dict:
 # ---------------------------------------------------------------------------
 
 app.include_router(claims_router.router)
+app.include_router(claims_router.cache_router)

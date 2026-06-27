@@ -16,14 +16,16 @@ Stage 2 — LLM Reranking  (OPENAI API CALL — requires OPENAI_API_KEY)
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 import os
+import time
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langsmith import traceable
+from openai import AsyncOpenAI
 
 # search_icd10 / search_cpt4 embed queries locally via HuggingFace — no OpenAI call at retrieval time
 from knowledge_base.embeddings import search_cpt4, search_icd10
@@ -31,8 +33,72 @@ from orchestrator.state import ClaimState
 
 logger = logging.getLogger(__name__)
 
+# Shared async client — one persistent connection pool for all reranking calls.
+# Do NOT instantiate inside the rerank functions; that creates a new httpx client each time.
+_async_client = AsyncOpenAI()
+
 _N_RETRIEVAL_RESULTS = 20  # ChromaDB candidates per query
-_MAX_SELECTED_CODES = 5
+_MAX_SELECTED_CODES = 8   # raised from 5: primary dx + secondary dx + mechanism + place + activity
+
+# ---------------------------------------------------------------------------
+# PHI masking — used for LangSmith trace inputs only; never for agent logic
+# ---------------------------------------------------------------------------
+
+_PHI_FIELDS = [
+    "patient_name", "patient_dob", "patient_insurance_id",
+    "name", "dob", "insurance_id",
+]
+
+
+def mask_phi_for_logging(state: dict) -> dict:
+    """Return a shallow copy of state with PHI fields and raw document replaced."""
+    masked = state.copy()
+    for field in _PHI_FIELDS:
+        if masked.get(field):
+            masked[field] = "[PHI-REDACTED]"
+    if "raw_document_text" in masked:
+        masked["raw_document_text"] = "[DOCUMENT-REDACTED]"
+    return masked
+
+
+def _mask_rerank_trace_inputs(inputs: dict) -> dict:
+    """process_inputs hook for @traceable — redacts PHI from the entities dict."""
+    if "entities" in inputs:
+        return {**inputs, "entities": mask_phi_for_logging(inputs["entities"])}
+    return inputs
+
+
+# ---------------------------------------------------------------------------
+# In-memory ChromaDB retrieval cache
+# ---------------------------------------------------------------------------
+
+_retrieval_cache: dict[str, list[dict]] = {}
+
+
+def _get_cache_key(query: str, n_results: int, collection: str) -> str:
+    return hashlib.md5(f"{collection}:{n_results}:{query}".encode()).hexdigest()
+
+
+def _cached_search_icd10(query: str, n_results: int) -> list[dict]:
+    key = _get_cache_key(query, n_results, "icd10")
+    if key in _retrieval_cache:
+        logger.info("Cache hit  [icd10] %.50s", query)
+        return _retrieval_cache[key]
+    results = search_icd10(query, n_results=n_results)
+    _retrieval_cache[key] = results
+    logger.info("Cache miss [icd10] %.50s", query)
+    return results
+
+
+def _cached_search_cpt4(query: str, n_results: int) -> list[dict]:
+    key = _get_cache_key(query, n_results, "cpt4")
+    if key in _retrieval_cache:
+        logger.info("Cache hit  [cpt4] %.50s", query)
+        return _retrieval_cache[key]
+    results = search_cpt4(query, n_results=n_results)
+    _retrieval_cache[key] = results
+    logger.info("Cache miss [cpt4] %.50s", query)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +257,7 @@ def _retrieve_icd10_candidates(entities: dict[str, Any]) -> list[dict]:
         if not query:
             continue
         try:
-            candidates = search_icd10(query, n_results=_N_RETRIEVAL_RESULTS)
+            candidates = _cached_search_icd10(query, _N_RETRIEVAL_RESULTS)
             for c in candidates:
                 code = c.get("code", "")
                 if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
@@ -244,7 +310,7 @@ def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
         if not query:
             continue
         try:
-            candidates = search_cpt4(query, n_results=_N_RETRIEVAL_RESULTS)
+            candidates = _cached_search_cpt4(query, _N_RETRIEVAL_RESULTS)
             for c in candidates:
                 code = c.get("code", "")
                 if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
@@ -294,7 +360,12 @@ Selection rules for external cause codes:
 - Only select external cause codes when the note EXPLICITLY documents an injury AND its circumstances.
 - External cause codes are NEVER the primary diagnosis — always list them after the injury code.
 - Do NOT select external cause codes for non-injury visits (chronic disease, routine follow-up).
-- If no external cause candidate is in the list, do not invent one; note the gap in reasoning_chain.\
+- If no external cause candidate is in the list, do not invent one; note the gap in reasoning_chain.
+- COMPLETENESS MANDATE: When injury circumstances are documented, you MUST assign all three
+  external cause code types — mechanism (W/X/Y), place-of-occurrence (Y92), and activity (Y93) —
+  if candidates for each are present. Never omit one type to stay under a code count limit.
+- ALL secondary diagnoses (e.g. cervicalgia, headache) must be coded BEFORE applying any code
+  count limit. Code the full clinical picture first, then trim only truly redundant codes.\
 """
 
 _ICD10_USER_TEMPLATE = """\
@@ -320,11 +391,14 @@ Chain-of-thought rules:
 Step 1: Identify the primary diagnosis from the clinical entities
 Step 2: Review each candidate code description carefully
 Step 3: Match code specificity to documentation (use most specific code supported)
-Step 4: Check if secondary diagnoses need separate codes
+Step 4: Check if secondary diagnoses need separate codes. ALL secondary diagnoses
+        (e.g. cervicalgia M542, headache, etc.) MUST be included before applying any code limit.
 Step 5: EXTERNAL CAUSE CHECK — if the note documents an injury with circumstances:
         a) Select the injury mechanism code (W/X/Y) from candidates
         b) Select the place-of-occurrence code (Y92.xxx) from candidates if documented
         c) Select the activity code (Y93.xxx) from candidates if documented
+        COMPLETENESS MANDATE: You MUST include all three types (a, b, c) when candidates
+        are available — never omit Y93 activity or Y92 place codes to stay under the limit.
         External cause codes must follow the primary injury code in selected_codes order.
         Skip this step entirely for non-injury visits.
 
@@ -458,55 +532,55 @@ def _parse_llm_json(content: str, stage: str) -> dict[str, Any]:
         return {"selected_codes": [], "reasoning_chain": ""}
 
 
-@traceable(name="coding_agent_rerank_icd10")
-def _rerank_icd10(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
-    """GPT-4o reranking for ICD-10 candidates. Reasoning/reranking only — no embeddings."""
+@traceable(name="coding_agent_rerank_icd10", process_inputs=_mask_rerank_trace_inputs)
+async def _rerank_icd10(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
+    """GPT-4o reranking for ICD-10 candidates via AsyncOpenAI — no embeddings."""
     if not candidates:
         return {"selected_codes": [], "reasoning_chain": "No ICD-10 candidates to rerank."}
 
-    candidates_text = _candidates_to_text(candidates, "disease")
-    entities_json = json.dumps(entities, indent=2)
-
     user_content = _ICD10_USER_TEMPLATE.format(
         max_codes=_MAX_SELECTED_CODES,
-        entities_json=entities_json,
-        candidates_text=candidates_text,
+        entities_json=json.dumps(entities, indent=2),
+        candidates_text=_candidates_to_text(candidates, "disease"),
     )
 
     try:
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
-        response = llm.invoke(
-            [SystemMessage(content=_ICD10_SYSTEM_PROMPT), HumanMessage(content=user_content)]
+        response = await _async_client.chat.completions.create(
+            model="gpt-4o",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": _ICD10_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_content},
+            ],
         )
-        content = response.content if hasattr(response, "content") else str(response)
-        return _parse_llm_json(content, "ICD-10")
+        return _parse_llm_json(response.choices[0].message.content or "", "ICD-10")
     except Exception as e:
         logger.exception("ICD-10 reranking LLM call failed: %s", e)
         return {"selected_codes": [], "reasoning_chain": ""}
 
 
-@traceable(name="coding_agent_rerank_cpt4")
-def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
-    """GPT-4o reranking for CPT-4 candidates. Reasoning/reranking only — no embeddings."""
+@traceable(name="coding_agent_rerank_cpt4", process_inputs=_mask_rerank_trace_inputs)
+async def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
+    """GPT-4o reranking for CPT-4 candidates via AsyncOpenAI — no embeddings."""
     if not candidates:
         return {"selected_codes": [], "reasoning_chain": "No CPT-4 candidates to rerank."}
 
-    candidates_text = _candidates_to_text(candidates, "description")
-    entities_json = json.dumps(entities, indent=2)
-
     user_content = _CPT4_USER_TEMPLATE.format(
         max_codes=_MAX_SELECTED_CODES,
-        entities_json=entities_json,
-        candidates_text=candidates_text,
+        entities_json=json.dumps(entities, indent=2),
+        candidates_text=_candidates_to_text(candidates, "description"),
     )
 
     try:
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
-        response = llm.invoke(
-            [SystemMessage(content=_CPT4_SYSTEM_PROMPT), HumanMessage(content=user_content)]
+        response = await _async_client.chat.completions.create(
+            model="gpt-4o",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": _CPT4_SYSTEM_PROMPT},
+                {"role": "user",   "content": user_content},
+            ],
         )
-        content = response.content if hasattr(response, "content") else str(response)
-        return _parse_llm_json(content, "CPT-4")
+        return _parse_llm_json(response.choices[0].message.content or "", "CPT-4")
     except Exception as e:
         logger.exception("CPT-4 reranking LLM call failed: %s", e)
         return {"selected_codes": [], "reasoning_chain": ""}
@@ -517,7 +591,7 @@ def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict]) -> dict[str, 
 # ---------------------------------------------------------------------------
 
 
-def coding_agent(state: ClaimState) -> ClaimState:
+async def coding_agent(state: ClaimState) -> ClaimState:
     """
     LangGraph node: 2-stage RAG + LLM reranking for ICD-10 and CPT-4 codes.
 
@@ -530,24 +604,34 @@ def coding_agent(state: ClaimState) -> ClaimState:
     try:
         entities: dict[str, Any] = state.get("extracted_entities") or {}
 
-        # --- Stage 1: Semantic retrieval — HuggingFace embeddings, no API call ----------
-        icd10_candidates = _retrieve_icd10_candidates(entities)
-        cpt4_candidates = _retrieve_cpt4_candidates(entities)
-
+        # --- Stage 1: Semantic retrieval — both collections queried in parallel ----------
+        # _retrieve_*_candidates are sync (CPU-bound SentenceTransformer + ChromaDB).
+        # asyncio.to_thread() offloads each to the thread-pool so they run concurrently.
+        t1 = time.time()
+        icd10_candidates, cpt4_candidates = await asyncio.gather(
+            asyncio.to_thread(_retrieve_icd10_candidates, entities),
+            asyncio.to_thread(_retrieve_cpt4_candidates, entities),
+        )
         logger.info(
-            "coding_agent Stage 1: %d ICD-10 candidates, %d CPT-4 candidates",
+            "coding_agent Stage 1 (parallel retrieval): %d ICD-10, %d CPT-4 candidates — %.2fs",
             len(icd10_candidates),
             len(cpt4_candidates),
+            time.time() - t1,
         )
 
-        # --- Stage 2: LLM reranking — GPT-4o via OpenAI API (first & only API call) ----
-        icd10_result = _rerank_icd10(entities, icd10_candidates)
-        cpt4_result = _rerank_cpt4(entities, cpt4_candidates)
-
+        # --- Stage 2: LLM reranking — both GPT-4o calls run in parallel ----------------
+        # _rerank_* are async and use await llm.ainvoke(), releasing the event loop
+        # while waiting for HTTP responses, so asyncio.gather() genuinely overlaps them.
+        t2 = time.time()
+        icd10_result, cpt4_result = await asyncio.gather(
+            _rerank_icd10(entities, icd10_candidates),
+            _rerank_cpt4(entities, cpt4_candidates),
+        )
         logger.info(
-            "coding_agent Stage 2: %d ICD-10 selected, %d CPT-4 selected",
+            "coding_agent Stage 2 (parallel reranking): %d ICD-10, %d CPT-4 selected — %.2fs",
             len(icd10_result.get("selected_codes", [])),
             len(cpt4_result.get("selected_codes", [])),
+            time.time() - t2,
         )
 
         return {

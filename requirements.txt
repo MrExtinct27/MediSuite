@@ -30,3 +30,7 @@ python-multipart>=0.0.6
 
 # PDF Generation
 pymupdf>=1.23.0
+
+# HIPAA compliance
+cryptography>=42.0.0
+slowapi>=0.1.9

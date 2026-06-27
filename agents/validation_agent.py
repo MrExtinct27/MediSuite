@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -24,6 +26,67 @@ from orchestrator.state import ClaimState
 logger = logging.getLogger(__name__)
 
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.80"))
+
+# Path to the ICD-10 knowledge base used to confirm whether a code is billable.
+_ICD10_JSON_PATH = Path(__file__).resolve().parents[1] / "knowledge_base" / "ICD10.json"
+
+
+def _normalize_icd10(code: str) -> str:
+    """Normalize an ICD-10 code for comparison: strip, remove dots, uppercase."""
+    return (code or "").strip().replace(".", "").upper()
+
+
+@lru_cache(maxsize=1)
+def _valid_icd10_codes() -> frozenset[str]:
+    """
+    Load short (3-4 character) ICD-10 codes from ICD10.json into a normalized set.
+
+    The specificity check only needs to confirm whether SHORT codes are billable
+    (e.g. I10, J13, R51), so we discard the long codes that make up the bulk of the
+    71K-entry dataset. Keeping only 3-4 char codes shrinks memory and speeds up the
+    load significantly while preserving the billable-short-code fix.
+    Loaded once and cached for the lifetime of the process.
+    """
+    try:
+        with open(_ICD10_JSON_PATH, encoding="utf-8") as fh:
+            data: list[dict] = json.load(fh)
+        codes = {
+            norm
+            for rec in data
+            if 3 <= len(norm := _normalize_icd10(rec.get("code", ""))) <= 4
+        }
+        logger.info("Loaded %d short ICD-10 codes for billability checks.", len(codes))
+        return frozenset(codes)
+    except Exception as exc:
+        logger.exception("Failed to load ICD-10 codes from %s: %s", _ICD10_JSON_PATH, exc)
+        return frozenset()
+
+# ---------------------------------------------------------------------------
+# PHI masking — used for LangSmith trace inputs only; never for agent logic
+# ---------------------------------------------------------------------------
+
+_PHI_FIELDS = [
+    "patient_name", "patient_dob", "patient_insurance_id",
+    "name", "dob", "insurance_id",
+]
+
+
+def mask_phi_for_logging(state: dict) -> dict:
+    """Return a shallow copy of state with PHI fields and raw document replaced."""
+    masked = state.copy()
+    for field in _PHI_FIELDS:
+        if masked.get(field):
+            masked[field] = "[PHI-REDACTED]"
+    if "raw_document_text" in masked:
+        masked["raw_document_text"] = "[DOCUMENT-REDACTED]"
+    return masked
+
+
+def _mask_state_trace_inputs(inputs: dict) -> dict:
+    """process_inputs hook for @traceable — redacts PHI from the state dict."""
+    if "state" in inputs:
+        return {**inputs, "state": mask_phi_for_logging(inputs["state"])}
+    return inputs
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +136,29 @@ def check_required_fields(state: ClaimState) -> list[dict]:
 
 def check_icd10_specificity(state: ClaimState) -> list[dict]:
     """
-    ICD-10 codes must be at least 4 characters.
-    3-char codes are category-level headers, not billable.
+    Flag ICD-10 codes that lack billable specificity.
+
+    Many 3-character ICD-10 codes (e.g. I10, J13, R51) are themselves valid,
+    billable codes. We therefore only flag a code as non-billable when it does
+    NOT exist as an exact entry in the ICD10.json knowledge base. Any code that
+    matches the dataset exactly is treated as billable and is never flagged.
     """
     errors: list[dict] = []
+    valid_codes = _valid_icd10_codes()
+
     for entry in _selected_icd10(state):
         code = (entry.get("code") or "").strip()
-        if code and len(code) <= 3:
+        if not code:
+            continue
+
+        normalized = _normalize_icd10(code)
+
+        # Exact match in the dataset → real billable code, do not flag.
+        if normalized in valid_codes:
+            continue
+
+        # Only short codes that are NOT in the dataset are suspected category-level/incomplete.
+        if len(normalized) <= 3:
             errors.append(
                 _error(
                     f"icd10:{code}",
@@ -198,7 +277,7 @@ Assigned CPT-4 codes:
 JSON only, no markdown:"""
 
 
-@traceable(name="validation_agent_llm_clinical_logic")
+@traceable(name="validation_agent_llm_clinical_logic", process_inputs=_mask_state_trace_inputs)
 def _run_level2(state: ClaimState) -> list[dict]:
     """GPT-4o clinical logic validation — one API call, reasoning only (no embeddings)."""
     entities = state.get("extracted_entities") or {}

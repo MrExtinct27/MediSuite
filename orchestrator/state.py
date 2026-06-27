@@ -14,6 +14,10 @@ class ClaimState(TypedDict, total=False):
     raw_document_text: str
     extracted_entities: dict  # diagnoses, procedures, medications, dates
 
+    # Optional patient fields submitted via the API form. Used ONLY as fallback
+    # values when the Document Agent did not extract that field from the note.
+    form_overrides: dict  # {patient_name, patient_dob, patient_insurance_id, patient_sex, patient_address, insurance_provider}
+
     # Stage 1 — raw semantic retrieval hits (ChromaDB / HuggingFace)
     icd10_candidates: list[dict]  # code, disease, category, score
     cpt4_candidates: list[dict]   # code, description, category, score
@@ -30,3 +34,5 @@ class ClaimState(TypedDict, total=False):
     # claim_agent output
     claim_form_path: str    # path to generated ./claims/{claim_id}.json
     processing_status: str  # 'claim_generated' | 'claim_failed'
+    requires_human_review: bool       # True when any code falls below CONFIDENCE_THRESHOLD
+    low_confidence_codes: list[dict]  # codes that triggered human review
