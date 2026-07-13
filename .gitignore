@@ -41,7 +41,7 @@ models/
 *.sqlite3
 
 # Claim outputs (generated at runtime)
-claims/
+/claims/
 uploads/
 
 # Environment variables (never commit API keys)
@@ -86,6 +86,6 @@ tessdata/
 *.pbm
 .cursorrules
 
-tests/
-claims/
-knowledge_base/
+/tests/
+/claims/
+/knowledge_base/
