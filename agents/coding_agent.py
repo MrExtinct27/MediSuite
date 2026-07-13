@@ -28,14 +28,32 @@ from langsmith import traceable
 from openai import AsyncOpenAI
 
 # search_icd10 / search_cpt4 embed queries locally via HuggingFace — no OpenAI call at retrieval time
+from db.progress import set_processing_stage
 from knowledge_base.embeddings import search_cpt4, search_icd10
-from orchestrator.state import ClaimState
+from orchestrator.state import (
+    ClaimState,
+    model_supports_temperature,
+    resolve_llm_model,
+)
 
 logger = logging.getLogger(__name__)
 
 # Shared async client — one persistent connection pool for all reranking calls.
 # Do NOT instantiate inside the rerank functions; that creates a new httpx client each time.
+# The client is model-agnostic; the model string is chosen per request (see state["llm_model"]).
 _async_client = AsyncOpenAI()
+
+
+def _chat_completion_kwargs(model: str) -> dict:
+    """
+    Build the model-specific kwargs for a chat completion call. Temperature is
+    only accepted by gpt-4o; the reasoning models (gpt-5 / gpt-5.5) reject it,
+    so it is omitted for them.
+    """
+    kwargs: dict = {"model": model}
+    if model_supports_temperature(model):
+        kwargs["temperature"] = 0
+    return kwargs
 
 _N_RETRIEVAL_RESULTS = 20  # ChromaDB candidates per query
 _MAX_SELECTED_CODES = 8   # raised from 5: primary dx + secondary dx + mechanism + place + activity
@@ -533,8 +551,8 @@ def _parse_llm_json(content: str, stage: str) -> dict[str, Any]:
 
 
 @traceable(name="coding_agent_rerank_icd10", process_inputs=_mask_rerank_trace_inputs)
-async def _rerank_icd10(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
-    """GPT-4o reranking for ICD-10 candidates via AsyncOpenAI — no embeddings."""
+async def _rerank_icd10(entities: dict[str, Any], candidates: list[dict], model: str) -> dict[str, Any]:
+    """LLM reranking for ICD-10 candidates via AsyncOpenAI — no embeddings. Model chosen per request."""
     if not candidates:
         return {"selected_codes": [], "reasoning_chain": "No ICD-10 candidates to rerank."}
 
@@ -546,8 +564,7 @@ async def _rerank_icd10(entities: dict[str, Any], candidates: list[dict]) -> dic
 
     try:
         response = await _async_client.chat.completions.create(
-            model="gpt-4o",
-            temperature=0,
+            **_chat_completion_kwargs(model),
             messages=[
                 {"role": "system", "content": _ICD10_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_content},
@@ -560,8 +577,8 @@ async def _rerank_icd10(entities: dict[str, Any], candidates: list[dict]) -> dic
 
 
 @traceable(name="coding_agent_rerank_cpt4", process_inputs=_mask_rerank_trace_inputs)
-async def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict]) -> dict[str, Any]:
-    """GPT-4o reranking for CPT-4 candidates via AsyncOpenAI — no embeddings."""
+async def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict], model: str) -> dict[str, Any]:
+    """LLM reranking for CPT-4 candidates via AsyncOpenAI — no embeddings. Model chosen per request."""
     if not candidates:
         return {"selected_codes": [], "reasoning_chain": "No CPT-4 candidates to rerank."}
 
@@ -573,8 +590,7 @@ async def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict]) -> dict
 
     try:
         response = await _async_client.chat.completions.create(
-            model="gpt-4o",
-            temperature=0,
+            **_chat_completion_kwargs(model),
             messages=[
                 {"role": "system", "content": _CPT4_SYSTEM_PROMPT},
                 {"role": "user",   "content": user_content},
@@ -602,7 +618,10 @@ async def coding_agent(state: ClaimState) -> ClaimState:
             state['cpt4_selected']        — GPT-4o reranked codes (Stage 2)
     """
     try:
+        set_processing_stage(state.get("claim_id"), "coding")
+
         entities: dict[str, Any] = state.get("extracted_entities") or {}
+        model = resolve_llm_model(state.get("llm_model"))
 
         # --- Stage 1: Semantic retrieval — both collections queried in parallel ----------
         # _retrieve_*_candidates are sync (CPU-bound SentenceTransformer + ChromaDB).
@@ -624,8 +643,8 @@ async def coding_agent(state: ClaimState) -> ClaimState:
         # while waiting for HTTP responses, so asyncio.gather() genuinely overlaps them.
         t2 = time.time()
         icd10_result, cpt4_result = await asyncio.gather(
-            _rerank_icd10(entities, icd10_candidates),
-            _rerank_cpt4(entities, cpt4_candidates),
+            _rerank_icd10(entities, icd10_candidates, model),
+            _rerank_cpt4(entities, cpt4_candidates, model),
         )
         logger.info(
             "coding_agent Stage 2 (parallel reranking): %d ICD-10, %d CPT-4 selected — %.2fs",

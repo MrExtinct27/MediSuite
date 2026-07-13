@@ -51,8 +51,17 @@ export interface ClaimSummary {
   claim_id: string;
   patient_name: string | null;
   service_date: string | null;
-  validation_status: string; // "passed" | "failed"
+  validation_status: string; // "passed" | "failed" | "processing"
   avg_confidence: number;    // 0.0 – 1.0
+}
+
+export type ProcessingStage = "document" | "coding" | "validation" | "claim" | "complete";
+
+export interface ClaimStatusResponse {
+  claim_id: string;
+  processing_stage: ProcessingStage;
+  status: string; // processing | generated | failed | pending
+  complete: boolean;
 }
 
 export type AgentStatus = "idle" | "running" | "complete" | "error";

@@ -42,6 +42,7 @@ def _migrate_add_missing_columns() -> None:
         "claims": {
             "service_date": "VARCHAR(32)",
             "avg_confidence": "FLOAT",
+            "processing_stage": "VARCHAR(32)",
         },
     }
 

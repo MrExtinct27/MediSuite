@@ -16,10 +16,27 @@ import fitz  # PyMuPDF
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from langsmith import traceable
+from openai import OpenAIError
 
-from orchestrator.state import ClaimState
+from db.progress import set_processing_stage
+from orchestrator.state import (
+    ClaimState,
+    model_supports_temperature,
+    resolve_llm_model,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _make_chat_llm(model: str) -> ChatOpenAI:
+    """
+    Build a ChatOpenAI client for the selected model. Temperature is only
+    accepted by gpt-4o; the reasoning models (gpt-5 / gpt-5.5) reject it, so
+    it is omitted for them.
+    """
+    if model_supports_temperature(model):
+        return ChatOpenAI(model=model, temperature=0)
+    return ChatOpenAI(model=model)
 
 # ---------------------------------------------------------------------------
 # PHI masking — used for LangSmith trace inputs only; never for agent logic
@@ -334,13 +351,13 @@ JSON only, no markdown:\
 
 
 @traceable(name="document_agent_extract_entities", process_inputs=_mask_doc_trace_inputs)
-def _extract_entities_with_llm(text: str) -> dict[str, Any] | None:
-    """Call GPT-4o via langchain-openai; return parsed JSON or None."""
+def _extract_entities_with_llm(text: str, model: str) -> dict[str, Any] | None:
+    """Call the selected LLM via langchain-openai; return parsed JSON or None."""
     if not text or not text.strip():
         return _empty_entities()
 
     try:
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = _make_chat_llm(model)
         messages = [
             SystemMessage(content=EXTRACTION_SYSTEM_PROMPT),
             HumanMessage(content=EXTRACTION_USER_TEMPLATE.format(text=text[:120_000])),
@@ -352,11 +369,22 @@ def _extract_entities_with_llm(text: str) -> dict[str, Any] | None:
             content = re.sub(r"^```\w*\n?", "", content)
             content = re.sub(r"\n?```\s*$", "", content)
         return json.loads(content)
+    except OpenAIError:
+        # Genuine API failure — quota / rate limit (429), auth, connection, timeout,
+        # or upstream server error. Do NOT mask this as an empty claim: re-raise so the
+        # request fails loudly and the caller sees a real error instead of a blank result.
+        logger.exception("LLM API call failed during entity extraction (model=%s)", model)
+        raise
     except json.JSONDecodeError as e:
-        logger.warning("LLM response was not valid JSON: %s", e)
-        return _empty_entities()
-    except Exception as e:
-        logger.exception("LLM extraction failed: %s", e)
+        # The model responded successfully but returned content that is not valid JSON.
+        # This is a genuine unparseable-content case (not an API failure), so fall back
+        # to empty entities — but log it clearly so it stays diagnosable.
+        logger.warning(
+            "LLM (%s) returned unparseable (non-JSON) extraction content; "
+            "returning empty entities: %s",
+            model,
+            e,
+        )
         return _empty_entities()
 
 
@@ -407,6 +435,8 @@ def document_agent(state: ClaimState) -> ClaimState:
     Reads state["raw_document_text"] or state["file_path"]; writes back raw_document_text and extracted_entities.
     """
     try:
+        set_processing_stage(state.get("claim_id"), "document")
+
         # Resolve input text
         raw_text = state.get("raw_document_text") or ""
         file_path = state.get("file_path")
@@ -420,8 +450,9 @@ def document_agent(state: ClaimState) -> ClaimState:
                 "extracted_entities": _empty_entities(),
             }
 
-        # GPT-4o extraction (reasoning only; no embeddings)
-        entities = _extract_entities_with_llm(raw_text)
+        # LLM extraction (reasoning only; no embeddings). Model chosen per request.
+        model = resolve_llm_model(state.get("llm_model"))
+        entities = _extract_entities_with_llm(raw_text, model)
         if entities is None:
             entities = _empty_entities()
 
@@ -440,6 +471,11 @@ def document_agent(state: ClaimState) -> ClaimState:
             updates["patient_insurance_id"] = str(entities["patient_insurance_id"])
 
         return {**state, **updates}
+    except OpenAIError:
+        # Surface genuine LLM API failures (quota/429, auth, network) to the caller
+        # instead of silently returning an empty claim with no visible cause.
+        logger.exception("document_agent: LLM API call failed")
+        raise
     except Exception as e:
         logger.exception("document_agent failed: %s", e)
         return {

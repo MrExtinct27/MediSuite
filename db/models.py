@@ -20,7 +20,10 @@ class Claim(Base):
     patient_dob: Mapped[Optional[str]] = mapped_column(String(32))
     patient_insurance_id: Mapped[Optional[str]] = mapped_column(String(128))
     service_date: Mapped[Optional[str]] = mapped_column(String(32))  # summary field for dashboard
-    status: Mapped[str] = mapped_column(String(32), default="pending")  # pending | generated | failed
+    status: Mapped[str] = mapped_column(String(32), default="pending")  # pending | processing | generated | failed
+    # Live pipeline stage, updated by each agent as it runs so the frontend can poll progress.
+    # One of: document | coding | validation | claim | complete
+    processing_stage: Mapped[Optional[str]] = mapped_column(String(32))
     form_path: Mapped[Optional[str]] = mapped_column(Text)
     validation_passed: Mapped[Optional[bool]] = mapped_column(Boolean)
     avg_confidence: Mapped[Optional[float]] = mapped_column(Float)  # mean confidence across all codes

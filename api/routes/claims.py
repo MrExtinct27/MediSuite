@@ -11,6 +11,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form
+from openai import AuthenticationError, OpenAIError, RateLimitError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from pathlib import Path
@@ -23,6 +24,7 @@ from datetime import datetime
 from db.database import get_db
 from db.models import Claim, ReviewQueue
 from orchestrator.graph import graph
+from orchestrator.state import resolve_llm_model
 from utils.encryption import decrypt_claim
 
 logger = logging.getLogger(__name__)
@@ -64,8 +66,16 @@ class ClaimSummary(BaseModel):
     claim_id: str
     patient_name: Optional[str]
     service_date: Optional[str]
-    validation_status: str  # "passed" | "failed"
+    validation_status: str  # "passed" | "failed" | "processing"
     avg_confidence: float   # 0.0 – 1.0, mean confidence across all codes
+
+
+class ClaimStatusResponse(BaseModel):
+    """Lightweight live-progress payload polled ~once/second by the Submit Claim page."""
+    claim_id: str
+    processing_stage: str  # document | coding | validation | claim | complete
+    status: str            # processing | generated | failed | pending
+    complete: bool
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +96,7 @@ async def process_claim(
     patient_sex: Optional[str] = Form(None),
     patient_address: Optional[str] = Form(None),
     insurance_provider: Optional[str] = Form(None),
+    llm_model: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -101,6 +112,10 @@ async def process_claim(
 
     generated_claim_id = claim_id or str(uuid.uuid4())
 
+    # Per-request LLM model selection. Falls back to the default when the value
+    # is missing or not one of the three allowed models — never rejected.
+    selected_llm_model = resolve_llm_model(llm_model)
+
     # Write uploaded file to a temp path so document_agent can read it
     file_path: Optional[str] = None
     if file is not None:
@@ -115,6 +130,7 @@ async def process_claim(
         "raw_document_text": raw_text or "",
         "file_path": file_path,
         "revalidation_count": 0,
+        "llm_model": selected_llm_model,
         # Fallback-only patient values; note-extracted values take precedence downstream.
         "form_overrides": {
             "patient_name": patient_name,
@@ -126,8 +142,57 @@ async def process_claim(
         },
     }
 
+    # Create the claim row up front (status=processing, stage=document) so the
+    # frontend can immediately poll GET /claims/{id}/status for live progress.
+    # The pipeline agents update processing_stage as they run; claim_agent flips
+    # it to "complete" at the end.
+    try:
+        existing = db.get(Claim, generated_claim_id)
+        if existing is None:
+            db.add(
+                Claim(
+                    claim_id=generated_claim_id,
+                    patient_name=patient_name or None,
+                    patient_dob=patient_dob or None,
+                    patient_insurance_id=patient_insurance_id or None,
+                    status="processing",
+                    processing_stage="document",
+                )
+            )
+        else:
+            existing.status = "processing"
+            existing.processing_stage = "document"
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception("Failed to create processing row for claim %s: %s", generated_claim_id, e)
+
     try:
         final_state = await graph.ainvoke(initial_state)
+    except RateLimitError as e:
+        logger.exception("LLM rate limit / quota exceeded for claim %s: %s", generated_claim_id, e)
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "LLM rate limit or quota exceeded — the claim was not processed. "
+                "Check the model's usage/billing and try again."
+            ),
+        )
+    except AuthenticationError as e:
+        logger.exception("LLM authentication failed for claim %s: %s", generated_claim_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "LLM authentication failed — the API key is missing or invalid. "
+                "The claim was not processed."
+            ),
+        )
+    except OpenAIError as e:
+        logger.exception("LLM API error for claim %s: %s", generated_claim_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM API error — the claim was not processed: {e}",
+        )
     except Exception as e:
         logger.exception("Graph execution failed for claim %s: %s", generated_claim_id, e)
         raise HTTPException(status_code=500, detail=f"Pipeline error: {e}")
@@ -165,6 +230,17 @@ def _avg_confidence_for(claim: Claim) -> float:
     return sum(confidences) / len(confidences) if confidences else 0.0
 
 
+def _summary_validation_status(claim: Claim) -> str:
+    """
+    Map a claim to a dashboard status: "processing" while the pipeline is still
+    running (so it isn't mislabeled "failed" just because validation_passed is
+    not set yet), otherwise "passed" / "failed" from the validation result.
+    """
+    if claim.status == "processing" and (claim.processing_stage or "") != "complete":
+        return "processing"
+    return "passed" if claim.validation_passed else "failed"
+
+
 @router.get("/", response_model=list[ClaimSummary])
 def list_claims(db: Session = Depends(get_db)):
     """
@@ -178,7 +254,7 @@ def list_claims(db: Session = Depends(get_db)):
                 claim_id=c.claim_id,
                 patient_name=c.patient_name,
                 service_date=c.service_date,
-                validation_status="passed" if c.validation_passed else "failed",
+                validation_status=_summary_validation_status(c),
                 avg_confidence=_avg_confidence_for(c),
             )
             for c in claims
@@ -221,6 +297,31 @@ def get_claim_result(claim_id: str):
             raise HTTPException(status_code=500, detail="Failed to read claim JSON.") from exc
 
     raise HTTPException(status_code=404, detail=f"Claim file for {claim_id!r} not found.")
+
+
+@router.get("/{claim_id}/status", response_model=ClaimStatusResponse)
+def get_claim_status(claim_id: str, db: Session = Depends(get_db)):
+    """
+    Fast live-progress check for the Submit Claim page (polled ~1x/second).
+
+    Reads only the Claim row's stage/status columns — never decrypts the claim
+    file — so it stays cheap enough to poll continuously while the pipeline runs.
+    """
+    claim = db.get(Claim, claim_id)
+    if claim is None:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id!r} not found.")
+
+    # Legacy rows (created before processing_stage existed) have no stage: infer
+    # "complete" from a generated status, otherwise assume it is still at document.
+    stage = claim.processing_stage or ("complete" if claim.status == "generated" else "document")
+    complete = stage == "complete" or claim.status == "generated"
+
+    return ClaimStatusResponse(
+        claim_id=claim.claim_id,
+        processing_stage=stage,
+        status=claim.status,
+        complete=complete,
+    )
 
 
 @router.get("/review-queue")

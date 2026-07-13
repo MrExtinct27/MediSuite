@@ -26,6 +26,7 @@ from api.limiter import limiter
 from api.routes import claims as claims_router
 from db.database import init_db
 from knowledge_base.embeddings import ensure_collections
+from orchestrator.state import AVAILABLE_LLM_MODELS, DEFAULT_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -72,7 +73,8 @@ async def startup_event() -> None:
 def health() -> dict:
     """
     Liveness / readiness check.
-    Reports embedding model (HuggingFace), LLM model (GPT-4o), and LangSmith status.
+    Reports embedding model (HuggingFace), the selectable LLM models (the default
+    plus the full available list), and LangSmith status.
     No embedding or LLM calls are made here.
     """
     langsmith_enabled: bool = (
@@ -84,7 +86,8 @@ def health() -> dict:
         "embedding_model": os.getenv(
             "EMBEDDING_MODEL", "pritamdeka/S-PubMedBert-MS-MARCO"
         ),
-        "llm_model": "gpt-4o",
+        "default_llm_model": DEFAULT_LLM_MODEL,
+        "available_llm_models": list(AVAILABLE_LLM_MODELS),
         "langsmith_enabled": langsmith_enabled,
     }
 

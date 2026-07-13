@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from db.progress import set_processing_stage
 from orchestrator.state import ClaimState
 from utils.encryption import encrypt_claim
 
@@ -195,6 +196,7 @@ def _persist_to_db(
             claim.patient_insurance_id = patient["insurance_id"]
             claim.service_date = claim_data.get("service_date")
             claim.status = "generated"
+            claim.processing_stage = "complete"  # pipeline finished — frontend polling stops here
             claim.form_path = form_path
             claim.validation_passed = state.get("validation_passed")
             claim.avg_confidence = avg_confidence
@@ -244,6 +246,7 @@ def claim_agent(state: ClaimState) -> ClaimState:
     """
     try:
         claim_id = state.get("claim_id") or str(uuid.uuid4())
+        set_processing_stage(claim_id, "claim")
 
         claim_data = _build_claim_data({**state, "claim_id": claim_id})
 

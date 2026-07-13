@@ -1,6 +1,30 @@
 """Claim state for the MediSuite AI Agent LangGraph workflow."""
 
-from typing import TypedDict
+from typing import Optional, TypedDict
+
+# ---------------------------------------------------------------------------
+# Selectable LLM models
+# ---------------------------------------------------------------------------
+# The user picks one of these on the Submit Claim page; the choice is carried
+# through the pipeline via ClaimState["llm_model"] and read by each agent at
+# call time. Note: gpt-5 / gpt-5.5 are reasoning models and do not accept the
+# same params as gpt-4o (e.g. temperature) — see model_supports_temperature().
+
+AVAILABLE_LLM_MODELS: tuple[str, ...] = ("gpt-4o", "gpt-5", "gpt-5.5")
+DEFAULT_LLM_MODEL: str = "gpt-4o"
+
+
+def resolve_llm_model(value: Optional[str]) -> str:
+    """Return value if it is one of AVAILABLE_LLM_MODELS, else the default."""
+    return value if value in AVAILABLE_LLM_MODELS else DEFAULT_LLM_MODEL
+
+
+def model_supports_temperature(model: str) -> bool:
+    """
+    Only gpt-4o accepts a temperature parameter. The reasoning models
+    (gpt-5 / gpt-5.5) reject it, so callers must omit temperature for them.
+    """
+    return model == "gpt-4o"
 
 
 class ClaimState(TypedDict, total=False):
@@ -13,6 +37,15 @@ class ClaimState(TypedDict, total=False):
     patient_insurance_id: str
     raw_document_text: str
     extracted_entities: dict  # diagnoses, procedures, medications, dates
+
+    # LLM model selected per-request on the Submit Claim page. One of
+    # AVAILABLE_LLM_MODELS; agents read this at call time instead of hardcoding.
+    llm_model: str
+
+    # Live pipeline progress stage, mirrored to the Claim DB row by each agent so
+    # the frontend can poll GET /claims/{id}/status while the pipeline runs.
+    # One of: document | coding | validation | claim | complete
+    processing_stage: str
 
     # Optional patient fields submitted via the API form. Used ONLY as fallback
     # values when the Document Agent did not extract that field from the note.

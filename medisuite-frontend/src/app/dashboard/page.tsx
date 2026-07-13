@@ -48,6 +48,7 @@ function computeStats(claims: ClaimSummary[]): Stats {
   let passedValidation = 0, flaggedClaims = 0, confidenceSum = 0;
   for (const c of claims) {
     if (c.validation_status === "passed") passedValidation++;
+    else if (c.validation_status === "processing") { /* in-flight — neither passed nor flagged */ }
     else flaggedClaims++;
     confidenceSum += c.avg_confidence ?? 0;
   }
@@ -229,16 +230,40 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
     async function load() {
       try {
         const res = await api.get<ClaimSummary[]>("/claims");
-        if (!cancelled) setClaims(res.data);
+        if (cancelled) return;
+        setClaims(res.data);
+        // Keep refreshing every 3s while any claim is still processing so its
+        // badge flips from PROCESSING to PASSED/FLAGGED automatically; stop once none are.
+        const anyProcessing = res.data.some((c) => c.validation_status === "processing");
+        if (anyProcessing && !intervalId) {
+          intervalId = setInterval(load, 3000);
+        } else if (!anyProcessing) {
+          stopPolling();
+        }
       } catch {
-        if (!cancelled) setClaims(MOCK_CLAIMS);
+        // On a transient error, keep any real claims we already have; only fall
+        // back to mock data if we never loaded anything.
+        if (!cancelled) setClaims((prev) => (prev.length ? prev : MOCK_CLAIMS));
       }
     }
+
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      stopPolling();
+    };
   }, []);
 
   const stats = useMemo(() => computeStats(claims), [claims]);
@@ -323,9 +348,10 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {displayClaims.map((claim, idx) => {
+                    const isProcessing = claim.validation_status === "processing";
                     const passed = claim.validation_status === "passed";
-                    const statusColor = passed ? "#00FF9C" : "#F59E0B";
-                    const statusLabel = passed ? "PASSED" : "FLAGGED";
+                    const statusColor = isProcessing ? "#00D4FF" : passed ? "#00FF9C" : "#F59E0B";
+                    const statusLabel = isProcessing ? "PROCESSING" : passed ? "PASSED" : "FLAGGED";
 
                     return (
                       <motion.tr
@@ -357,17 +383,29 @@ export default function DashboardPage() {
                           {claim.service_date ?? "—"}
                         </TableCell>
                         <TableCell>
-                          <span
-                            className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest"
+                          <motion.span
+                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest"
                             style={{
                               fontFamily: "var(--font-dm-mono)",
                               color: statusColor,
                               background: `${statusColor}18`,
                               border: `1px solid ${statusColor}40`,
                             }}
+                            animate={isProcessing ? { opacity: [0.55, 1, 0.55] } : { opacity: 1 }}
+                            transition={
+                              isProcessing
+                                ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                                : { duration: 0 }
+                            }
                           >
+                            {isProcessing && (
+                              <span
+                                className="inline-block size-1.5 rounded-full"
+                                style={{ background: statusColor, boxShadow: `0 0 6px ${statusColor}` }}
+                              />
+                            )}
                             {statusLabel}
-                          </span>
+                          </motion.span>
                         </TableCell>
                         <TableCell className="text-right">
                           <Link

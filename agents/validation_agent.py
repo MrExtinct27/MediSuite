@@ -21,9 +21,26 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langsmith import traceable
 
-from orchestrator.state import ClaimState
+from agents.claim_agent import _resolve_patient_fields
+from db.progress import set_processing_stage
+from orchestrator.state import (
+    ClaimState,
+    model_supports_temperature,
+    resolve_llm_model,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _make_chat_llm(model: str) -> ChatOpenAI:
+    """
+    Build a ChatOpenAI client for the selected model. Temperature is only
+    accepted by gpt-4o; the reasoning models (gpt-5 / gpt-5.5) reject it, so
+    it is omitted for them.
+    """
+    if model_supports_temperature(model):
+        return ChatOpenAI(model=model, temperature=0)
+    return ChatOpenAI(model=model)
 
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.80"))
 
@@ -112,16 +129,24 @@ def _selected_cpt4(state: ClaimState) -> list[dict]:
 
 
 def check_required_fields(state: ClaimState) -> list[dict]:
-    """Verify that all required claim fields are present and non-empty."""
+    """
+    Verify that all required claim fields are present and non-empty.
+
+    Checks the resolved patient values (note-extracted, falling back to
+    form_overrides) rather than the raw note-extracted state fields, so a
+    field the user supplied via the Submit Claim form is not flagged as
+    missing just because the Document Agent didn't find it in the note.
+    """
     errors: list[dict] = []
 
+    patient = _resolve_patient_fields(state)
     required_str_fields = [
-        ("patient_name",         "Missing required field: patient_name"),
-        ("patient_dob",          "Missing required field: patient_dob"),
-        ("patient_insurance_id", "Missing patient insurance ID"),
+        ("name",         "patient_name",         "Missing required field: patient_name"),
+        ("dob",          "patient_dob",          "Missing required field: patient_dob"),
+        ("insurance_id", "patient_insurance_id", "Missing patient insurance ID"),
     ]
-    for field, message in required_str_fields:
-        value = state.get(field)
+    for resolved_key, field, message in required_str_fields:
+        value = patient.get(resolved_key)
         if not value or not str(value).strip():
             errors.append(_error(field, message, "critical"))
 
@@ -279,7 +304,7 @@ JSON only, no markdown:"""
 
 @traceable(name="validation_agent_llm_clinical_logic", process_inputs=_mask_state_trace_inputs)
 def _run_level2(state: ClaimState) -> list[dict]:
-    """GPT-4o clinical logic validation — one API call, reasoning only (no embeddings)."""
+    """LLM clinical logic validation — one API call, reasoning only (no embeddings). Model chosen per request."""
     entities = state.get("extracted_entities") or {}
     icd10_codes = _selected_icd10(state)
     cpt4_codes = _selected_cpt4(state)
@@ -294,7 +319,7 @@ def _run_level2(state: ClaimState) -> list[dict]:
     )
 
     try:
-        llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        llm = _make_chat_llm(resolve_llm_model(state.get("llm_model")))
         response = llm.invoke(
             [SystemMessage(content=_L2_SYSTEM_PROMPT), HumanMessage(content=user_content)]
         )
@@ -381,6 +406,8 @@ def validation_agent(state: ClaimState) -> ClaimState:
             state['validation_passed']  — True only when no critical errors remain
     """
     try:
+        set_processing_stage(state.get("claim_id"), "validation")
+
         all_errors: list[dict[str, Any]] = []
 
         # Level 1 — deterministic rule checks (no API)
