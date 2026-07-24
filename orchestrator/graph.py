@@ -19,8 +19,15 @@ from agents.claim_agent import claim_agent
 from agents.coding_agent import coding_agent
 from agents.document_agent import document_agent
 from agents.validation_agent import validation_agent
-from orchestrator.router import route_after_validation
+from orchestrator.router import MAX_REVALIDATION_ATTEMPTS, route_after_validation
 from orchestrator.state import ClaimState
+
+# Explicit recursion (super-step) limit passed to graph.ainvoke as a hard safety
+# net INDEPENDENT of the retry counter: even a mis-wired edge can never loop
+# unbounded. Each revalidation cycle is 3 super-steps (increment → coding →
+# validation); allow the full legitimate path (initial pass + capped retries +
+# claim node) with margin, then hard-stop.
+GRAPH_RECURSION_LIMIT: int = 3 * (MAX_REVALIDATION_ATTEMPTS + 2) + 4
 
 
 def _increment_revalidation(state: ClaimState) -> ClaimState:

@@ -274,14 +274,15 @@ def _retrieve_icd10_candidates(entities: dict[str, Any]) -> list[dict]:
         query = _build_retrieval_query(diag)
         if not query:
             continue
-        try:
-            candidates = _cached_search_icd10(query, _N_RETRIEVAL_RESULTS)
-            for c in candidates:
-                code = c.get("code", "")
-                if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
-                    seen[code] = c
-        except Exception as e:
-            logger.exception("ICD-10 retrieval error for diagnosis '%s': %s", diag.get("description", ""), e)
+        # No per-item swallow: an embedding/vector-search failure (HF API outage,
+        # rate limit, missing HF_TOKEN, timeout) is systemic, not specific to one
+        # diagnosis. Let it propagate so the pipeline surfaces a real error instead
+        # of silently producing empty candidates and a blank claim.
+        candidates = _cached_search_icd10(query, _N_RETRIEVAL_RESULTS)
+        for c in candidates:
+            code = c.get("code", "")
+            if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
+                seen[code] = c
 
     return list(seen.values())
 
@@ -327,14 +328,13 @@ def _retrieve_cpt4_candidates(entities: dict[str, Any]) -> list[dict]:
         query = _build_cpt4_query(proc)
         if not query:
             continue
-        try:
-            candidates = _cached_search_cpt4(query, _N_RETRIEVAL_RESULTS)
-            for c in candidates:
-                code = c.get("code", "")
-                if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
-                    seen[code] = c
-        except Exception as e:
-            logger.exception("CPT-4 retrieval error for procedure '%s': %s", description, e)
+        # No per-item swallow — see _retrieve_icd10_candidates: embedding/vector-search
+        # failures are systemic and must surface, not degrade to empty candidates.
+        candidates = _cached_search_cpt4(query, _N_RETRIEVAL_RESULTS)
+        for c in candidates:
+            code = c.get("code", "")
+            if code not in seen or c.get("score", 0) > seen[code].get("score", 0):
+                seen[code] = c
 
     return list(seen.values())
 
@@ -607,6 +607,16 @@ async def _rerank_cpt4(entities: dict[str, Any], candidates: list[dict], model: 
 # ---------------------------------------------------------------------------
 
 
+class RetrievalError(RuntimeError):
+    """
+    Raised when Stage 1 embedding / vector retrieval fails (e.g. HuggingFace
+    Inference API outage, rate limit, timeout, or missing HF_TOKEN).
+
+    This is surfaced rather than swallowed: without candidates the claim would be
+    silently empty, so the request must fail with a clear error instead.
+    """
+
+
 async def coding_agent(state: ClaimState) -> ClaimState:
     """
     LangGraph node: 2-stage RAG + LLM reranking for ICD-10 and CPT-4 codes.
@@ -624,13 +634,20 @@ async def coding_agent(state: ClaimState) -> ClaimState:
         model = resolve_llm_model(state.get("llm_model"))
 
         # --- Stage 1: Semantic retrieval — both collections queried in parallel ----------
-        # _retrieve_*_candidates are sync (CPU-bound SentenceTransformer + ChromaDB).
-        # asyncio.to_thread() offloads each to the thread-pool so they run concurrently.
+        # _retrieve_*_candidates are sync (blocking HF Inference API call + ChromaDB
+        # query). asyncio.to_thread() offloads each blocking I/O call to the thread
+        # pool so the two run concurrently.
         t1 = time.time()
-        icd10_candidates, cpt4_candidates = await asyncio.gather(
-            asyncio.to_thread(_retrieve_icd10_candidates, entities),
-            asyncio.to_thread(_retrieve_cpt4_candidates, entities),
-        )
+        try:
+            icd10_candidates, cpt4_candidates = await asyncio.gather(
+                asyncio.to_thread(_retrieve_icd10_candidates, entities),
+                asyncio.to_thread(_retrieve_cpt4_candidates, entities),
+            )
+        except Exception as e:
+            # Embedding / vector-search failure is systemic (HF API down, rate
+            # limited, no token). Do NOT degrade to an empty claim — raise so the
+            # request fails with a clear, visible error.
+            raise RetrievalError(f"Stage 1 retrieval failed (embedding/vector search): {e}") from e
         logger.info(
             "coding_agent Stage 1 (parallel retrieval): %d ICD-10, %d CPT-4 candidates — %.2fs",
             len(icd10_candidates),
@@ -661,6 +678,11 @@ async def coding_agent(state: ClaimState) -> ClaimState:
             "cpt4_selected": cpt4_result,
         }
 
+    except RetrievalError:
+        # Surface embedding/retrieval failures to the caller instead of returning
+        # an empty (blank-claim) result.
+        logger.exception("coding_agent: Stage 1 retrieval failed — surfacing error")
+        raise
     except Exception as e:
         logger.exception("coding_agent failed: %s", e)
         return {

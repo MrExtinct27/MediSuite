@@ -8,7 +8,7 @@ import os
 
 from orchestrator.state import ClaimState
 
-MAX_REVALIDATION_ATTEMPTS: int = int(os.getenv("MAX_REVALIDATION_ATTEMPTS", "2"))
+MAX_REVALIDATION_ATTEMPTS: int = int(os.getenv("MAX_REVALIDATION_ATTEMPTS", "1"))
 
 
 def route_after_validation(state: ClaimState) -> str:

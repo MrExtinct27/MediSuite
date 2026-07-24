@@ -100,7 +100,7 @@ function CyberInput({
     <div className="space-y-1.5">
       <label
         htmlFor={id}
-        className="block text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.5)]"
+        className="block text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.5)]"
         style={{ fontFamily: "var(--font-dm-mono)" }}
       >
         {label}
@@ -111,7 +111,7 @@ function CyberInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-[rgba(0,212,255,0.12)] bg-[rgba(0,212,255,0.04)] px-4 py-3 text-sm text-[#E4F0FF] placeholder-[rgba(228,240,255,0.25)] outline-none transition-all duration-200 focus:border-[#00D4FF] focus:shadow-[0_0_0_1px_rgba(0,212,255,0.3),0_0_12px_rgba(0,212,255,0.1)]"
+        className="w-full rounded-xl border border-[rgba(var(--ms-accent-rgb),0.12)] bg-[rgba(var(--ms-accent-rgb),0.04)] px-4 py-3 text-sm text-[var(--ms-text)] placeholder-[rgba(var(--ms-text-rgb),0.25)] outline-none transition-all duration-200 focus:border-[var(--ms-accent)] focus:shadow-[0_0_0_1px_rgba(var(--ms-accent-rgb),0.3),0_0_12px_rgba(var(--ms-accent-rgb),0.1)]"
         style={{ fontFamily: "var(--font-dm-mono)" }}
       />
     </div>
@@ -138,7 +138,7 @@ function CyberSelect({
     <div className="space-y-1.5">
       <label
         htmlFor={id}
-        className="block text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.5)]"
+        className="block text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.5)]"
         style={{ fontFamily: "var(--font-dm-mono)" }}
       >
         {label}
@@ -148,19 +148,19 @@ function CyberSelect({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-xl border border-[rgba(0,212,255,0.12)] bg-[rgba(0,212,255,0.04)] px-4 py-3 pr-10 text-sm text-[#E4F0FF] outline-none transition-all duration-200 focus:border-[#00D4FF] focus:shadow-[0_0_0_1px_rgba(0,212,255,0.3),0_0_12px_rgba(0,212,255,0.1)]"
+          className="w-full appearance-none rounded-xl border border-[rgba(var(--ms-accent-rgb),0.12)] bg-[rgba(var(--ms-accent-rgb),0.04)] px-4 py-3 pr-10 text-sm text-[var(--ms-text)] outline-none transition-all duration-200 focus:border-[var(--ms-accent)] focus:shadow-[0_0_0_1px_rgba(var(--ms-accent-rgb),0.3),0_0_12px_rgba(var(--ms-accent-rgb),0.1)]"
           style={{ fontFamily: "var(--font-dm-mono)" }}
         >
-          <option value="" className="bg-[#0a0f1e] text-[rgba(228,240,255,0.4)]">
+          <option value="" className="bg-[var(--ms-popover-bg)] text-[rgba(var(--ms-text-rgb),0.4)]">
             {placeholder ?? "Select…"}
           </option>
           {options.map((opt) => (
-            <option key={opt.value} value={opt.value} className="bg-[#0a0f1e] text-[#E4F0FF]">
+            <option key={opt.value} value={opt.value} className="bg-[var(--ms-popover-bg)] text-[var(--ms-text)]">
               {opt.label}
             </option>
           ))}
         </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[rgba(0,212,255,0.6)]" />
+        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-[rgba(var(--ms-accent-rgb),0.6)]" />
       </div>
     </div>
   );
@@ -361,21 +361,18 @@ export default function NewClaimPage() {
           transition={{ duration: 0.5 }}
         >
           <p
-            className="mb-1 text-[10px] uppercase tracking-widest text-[#00D4FF]"
+            className="mb-1 text-[10px] uppercase tracking-widest text-[var(--ms-accent)]"
             style={{ fontFamily: "var(--font-dm-mono)" }}
           >
             — New claim
           </p>
           <h1
-            className="text-3xl font-bold uppercase text-[#E4F0FF]"
+            className="text-3xl font-bold uppercase text-[var(--ms-text)]"
             style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.02em" }}
           >
             Submit Claim
           </h1>
-          <p
-            className="mt-2 text-sm text-[rgba(228,240,255,0.5)]"
-            style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}
-          >
+          <p className="helper-text mt-2">
             Upload a clinical note and patient details to run the multi-agent pipeline.
           </p>
         </motion.div>
@@ -394,7 +391,7 @@ export default function NewClaimPage() {
               className="glass-card p-5"
             >
               <p
-                className="mb-4 text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.45)]"
+                className="mb-4 text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.45)]"
                 style={{ fontFamily: "var(--font-dm-mono)" }}
               >
                 01 / Upload Document
@@ -407,12 +404,12 @@ export default function NewClaimPage() {
                 onDragLeave={handleDragLeave}
                 className="relative cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition-all duration-200"
                 style={{
-                  borderColor: isDragging ? "#00D4FF" : file ? "#00FF9C" : "rgba(0,212,255,0.3)",
+                  borderColor: isDragging ? "var(--ms-accent)" : file ? "var(--ms-success)" : "rgba(var(--ms-accent-rgb),0.3)",
                   background: isDragging
-                    ? "rgba(0,212,255,0.07)"
+                    ? "rgba(var(--ms-accent-rgb),0.07)"
                     : file
-                      ? "rgba(0,255,156,0.04)"
-                      : "rgba(0,212,255,0.02)",
+                      ? "rgba(var(--ms-success-rgb),0.04)"
+                      : "rgba(var(--ms-accent-rgb),0.02)",
                 }}
               >
                 <input
@@ -425,15 +422,15 @@ export default function NewClaimPage() {
 
                 {file ? (
                   <div className="flex flex-col items-center gap-3">
-                    <CheckCircle className="size-8 text-[#00FF9C]" />
+                    <CheckCircle className="size-8 text-[var(--ms-success)]" />
                     <span
-                      className="text-sm text-[#00FF9C]"
+                      className="text-sm text-[var(--ms-success)]"
                       style={{ fontFamily: "var(--font-dm-mono)" }}
                     >
                       {file.name}
                     </span>
                     <span
-                      className="text-[10px] text-[rgba(228,240,255,0.4)]"
+                      className="text-[10px] text-[rgba(var(--ms-text-rgb),0.4)]"
                       style={{ fontFamily: "var(--font-dm-mono)" }}
                     >
                       {(file.size / 1024).toFixed(1)} KB — Click to change
@@ -441,15 +438,15 @@ export default function NewClaimPage() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-3">
-                    <CloudUpload className="size-10 text-[#00D4FF] opacity-70" />
+                    <CloudUpload className="size-10 text-[var(--ms-accent)] opacity-70" />
                     <p
-                      className="text-sm text-[rgba(228,240,255,0.7)]"
+                      className="text-sm text-[rgba(var(--ms-text-rgb),0.7)]"
                       style={{ fontFamily: "var(--font-dm-sans)" }}
                     >
                       Drag & drop clinical document
                     </p>
                     <p
-                      className="text-[11px] text-[rgba(228,240,255,0.35)]"
+                      className="text-[11px] text-[rgba(var(--ms-text-rgb),0.35)]"
                       style={{ fontFamily: "var(--font-dm-mono)" }}
                     >
                       PDF, DOCX, TXT accepted
@@ -468,15 +465,12 @@ export default function NewClaimPage() {
             >
               <div className="space-y-1.5">
                 <p
-                  className="text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.45)]"
+                  className="text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.45)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   02 / Patient Details
                 </p>
-                <p
-                  className="text-sm text-[rgba(228,240,255,0.5)]"
-                  style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}
-                >
+                <p className="helper-text">
                   Optional. The clinical note is used first; these fields fill in only what the note does not contain.
                 </p>
               </div>
@@ -539,15 +533,12 @@ export default function NewClaimPage() {
             >
               <div className="space-y-1.5">
                 <p
-                  className="text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.45)]"
+                  className="text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.45)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   03 / Model Selection
                 </p>
-                <p
-                  className="text-sm text-[rgba(228,240,255,0.5)]"
-                  style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}
-                >
+                <p className="helper-text">
                   Choose based on clinical note complexity. Higher tiers use more reasoning but take longer to process.
                 </p>
               </div>
@@ -564,21 +555,21 @@ export default function NewClaimPage() {
                       className="rounded-xl border px-4 py-3 text-left outline-none transition-all duration-200"
                       style={{
                         fontFamily: "var(--font-dm-mono)",
-                        borderColor: selected ? "#00D4FF" : "rgba(0,212,255,0.12)",
-                        background: selected ? "rgba(0,212,255,0.08)" : "rgba(0,212,255,0.04)",
+                        borderColor: selected ? "var(--ms-accent)" : "rgba(var(--ms-accent-rgb),0.12)",
+                        background: selected ? "rgba(var(--ms-accent-rgb),0.08)" : "rgba(var(--ms-accent-rgb),0.04)",
                         boxShadow: selected
-                          ? "0 0 0 1px rgba(0,212,255,0.3), 0 0 12px rgba(0,212,255,0.1)"
+                          ? "0 0 0 1px rgba(var(--ms-accent-rgb),0.3), 0 0 12px rgba(var(--ms-accent-rgb),0.1)"
                           : "none",
                       }}
                     >
                       <span
                         className="block text-[10px] uppercase tracking-widest"
-                        style={{ color: selected ? "#00D4FF" : "rgba(228,240,255,0.5)" }}
+                        style={{ color: selected ? "var(--ms-accent)" : "rgba(var(--ms-text-rgb),0.5)" }}
                       >
                         {m.tier}
                       </span>
-                      <span className="mt-1 block text-sm text-[#E4F0FF]">{m.name}</span>
-                      <span className="mt-1 block text-[10px] text-[rgba(228,240,255,0.4)]">
+                      <span className="mt-1 block text-sm text-[var(--ms-text)]">{m.name}</span>
+                      <span className="mt-1 block text-[10px] text-[rgba(var(--ms-text-rgb),0.4)]">
                         {m.note}
                       </span>
                     </button>
@@ -594,12 +585,12 @@ export default function NewClaimPage() {
               transition={{ delay: 0.4, duration: 0.4 }}
               type="submit"
               disabled={!canSubmit}
-              className="w-full rounded-2xl py-4 font-bold uppercase tracking-wider text-black transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+              className="w-full rounded-2xl py-4 font-bold uppercase tracking-wider text-[var(--ms-on-accent)] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 fontFamily: "var(--font-syne)",
                 letterSpacing: "-0.01em",
-                background: canSubmit ? "#00D4FF" : "rgba(0,212,255,0.3)",
-                boxShadow: canSubmit ? "0 0 24px rgba(0,212,255,0.3)" : "none",
+                background: canSubmit ? "var(--ms-accent)" : "rgba(var(--ms-accent-rgb),0.3)",
+                boxShadow: canSubmit ? "0 0 24px rgba(var(--ms-accent-rgb),0.3)" : "none",
               }}
             >
               {submitting ? (
@@ -622,10 +613,10 @@ export default function NewClaimPage() {
             transition={{ delay: 0.3, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             className="glass-card sticky top-24 p-5"
           >
-            <div className="mb-5 flex items-center gap-2.5 border-b border-[rgba(0,212,255,0.08)] pb-4">
-              <FileText className="size-4 text-[#00D4FF]" />
+            <div className="mb-5 flex items-center gap-2.5 border-b border-[rgba(var(--ms-accent-rgb),0.08)] pb-4">
+              <FileText className="size-4 text-[var(--ms-accent)]" />
               <p
-                className="text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.45)]"
+                className="text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.45)]"
                 style={{ fontFamily: "var(--font-dm-mono)" }}
               >
                 Pipeline Status

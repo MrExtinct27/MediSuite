@@ -23,6 +23,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from api.limiter import limiter
+from api.routes import auth as auth_router
 from api.routes import claims as claims_router
 from db.database import init_db
 from knowledge_base.embeddings import ensure_collections
@@ -54,6 +55,14 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    # Log effective pipeline-loop guards so an env override is immediately visible.
+    from orchestrator.router import MAX_REVALIDATION_ATTEMPTS
+    logger.info(
+        "MediSuite config: MAX_REVALIDATION_ATTEMPTS=%d, PIPELINE_TIMEOUT_SECONDS=%s",
+        MAX_REVALIDATION_ATTEMPTS,
+        os.getenv("PIPELINE_TIMEOUT_SECONDS", "300"),
+    )
+
     logger.info("MediSuite startup: initialising database …")
     init_db()
 
@@ -96,5 +105,6 @@ def health() -> dict:
 # Routers
 # ---------------------------------------------------------------------------
 
+app.include_router(auth_router.router)
 app.include_router(claims_router.router)
 app.include_router(claims_router.cache_router)

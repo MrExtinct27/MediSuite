@@ -12,9 +12,9 @@ import { useClaimsStore } from "@/store/claimsStore";
 
 /* ─── Confidence bar ─────────────────────────────────────────────────── */
 function ConfidenceBar({ value }: { value: number }) {
-  const color = value >= 0.9 ? "#00FF9C" : value >= 0.7 ? "#F59E0B" : "#FF3B6B";
+  const color = value >= 0.9 ? "var(--ms-success)" : value >= 0.7 ? "var(--ms-warning)" : "var(--ms-error)";
   return (
-    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,0.06)]">
+    <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-[rgba(var(--ms-overlay-rgb),0.06)]">
       <motion.div
         className="h-full rounded-full"
         style={{ backgroundColor: color }}
@@ -30,7 +30,7 @@ function ConfidenceBar({ value }: { value: number }) {
 function CodeCard({ code, description, confidence, reasoning, index }: {
   code: string; description: string; confidence: number; reasoning?: string; index: number;
 }) {
-  const confColor = confidence >= 0.9 ? "#00FF9C" : confidence >= 0.7 ? "#F59E0B" : "#FF3B6B";
+  const confColor = confidence >= 0.9 ? "var(--ms-success)" : confidence >= 0.7 ? "var(--ms-warning)" : "var(--ms-error)";
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -41,13 +41,13 @@ function CodeCard({ code, description, confidence, reasoning, index }: {
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
           <div
-            className="mb-1 text-xl font-bold tracking-wider text-[#00D4FF]"
+            className="mb-1 text-xl font-bold tracking-wider text-[var(--ms-accent)]"
             style={{ fontFamily: "var(--font-dm-mono)" }}
           >
             {code}
           </div>
           <div
-            className="text-sm text-[rgba(228,240,255,0.8)]"
+            className="text-sm text-[rgba(var(--ms-text-rgb),0.8)]"
             style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.5 }}
           >
             {description}
@@ -62,10 +62,7 @@ function CodeCard({ code, description, confidence, reasoning, index }: {
       </div>
       <ConfidenceBar value={confidence} />
       {reasoning && (
-        <p
-          className="mt-3 text-xs text-[rgba(228,240,255,0.4)]"
-          style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}
-        >
+        <p className="helper-text mt-3">
           {reasoning}
         </p>
       )}
@@ -79,7 +76,7 @@ function AccordionSection({ title, children }: { title: string; children: React.
   return (
     <div
       className="glass-card-sm overflow-hidden"
-      style={{ borderLeft: "2px solid rgba(0,212,255,0.3)" }}
+      style={{ borderLeft: "2px solid rgba(var(--ms-accent-rgb),0.3)" }}
     >
       <button
         type="button"
@@ -87,13 +84,13 @@ function AccordionSection({ title, children }: { title: string; children: React.
         className="flex w-full items-center justify-between px-5 py-4 text-left"
       >
         <span
-          className="text-sm font-bold uppercase tracking-wider text-[rgba(228,240,255,0.8)]"
+          className="text-sm font-bold uppercase tracking-wider text-[rgba(var(--ms-text-rgb),0.8)]"
           style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.01em" }}
         >
           {title}
         </span>
         <ChevronDown
-          className="size-4 text-[#00D4FF] transition-transform duration-200"
+          className="size-4 text-[var(--ms-accent)] transition-transform duration-200"
           style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
         />
       </button>
@@ -107,7 +104,7 @@ function AccordionSection({ title, children }: { title: string; children: React.
             transition={{ duration: 0.25, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="border-t border-[rgba(0,212,255,0.08)] px-6 py-10">
+            <div className="border-t border-[rgba(var(--ms-accent-rgb),0.08)] px-6 py-10">
               {children}
             </div>
           </motion.div>
@@ -137,7 +134,7 @@ function DownloadJsonButton({ claim }: { claim: Claim | null }) {
       type="button"
       onClick={handleDownload}
       disabled={!claim}
-      className="flex items-center gap-2 rounded-2xl border border-[#00D4FF] px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#00D4FF] transition-all hover:bg-[rgba(0,212,255,0.08)] hover:shadow-[0_0_16px_rgba(0,212,255,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex items-center gap-2 rounded-2xl border border-[var(--ms-accent)] px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[var(--ms-accent)] transition-all hover:bg-[rgba(var(--ms-accent-rgb),0.08)] hover:shadow-[0_0_16px_rgba(var(--ms-accent-rgb),0.25)] disabled:cursor-not-allowed disabled:opacity-40"
       style={{ fontFamily: "var(--font-syne)" }}
     >
       <Download className="size-3.5" />
@@ -314,7 +311,7 @@ function DownloadCms1500Button({ claim }: { claim: Claim | null }) {
       type="button"
       onClick={() => claim && generateCms1500Pdf(claim)}
       disabled={!claim}
-      className="flex items-center gap-2 rounded-2xl border border-[#00D4FF] px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[#00D4FF] transition-all hover:bg-[rgba(0,212,255,0.08)] hover:shadow-[0_0_16px_rgba(0,212,255,0.25)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex items-center gap-2 rounded-2xl border border-[var(--ms-accent)] px-5 py-2.5 text-[11px] font-bold uppercase tracking-widest text-[var(--ms-accent)] transition-all hover:bg-[rgba(var(--ms-accent-rgb),0.08)] hover:shadow-[0_0_16px_rgba(var(--ms-accent-rgb),0.25)] disabled:cursor-not-allowed disabled:opacity-40"
       style={{ fontFamily: "var(--font-syne)" }}
     >
       <FileText className="size-3.5" />
@@ -377,25 +374,25 @@ export default function ClaimDetailPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45 }}
           className="glass-card mb-8 p-6"
-          style={{ borderTop: "2px solid #00D4FF" }}
+          style={{ borderTop: "2px solid var(--ms-accent)" }}
         >
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
             <div>
               <p
-                className="mb-1 text-[10px] uppercase tracking-widest text-[rgba(228,240,255,0.35)]"
+                className="mb-1 text-[10px] uppercase tracking-widest text-[rgba(var(--ms-text-rgb),0.35)]"
                 style={{ fontFamily: "var(--font-dm-mono)" }}
               >
                 Claim ID
               </p>
               <p
-                className="mb-3 text-sm text-[#00D4FF]"
+                className="mb-3 text-sm text-[var(--ms-accent)]"
                 style={{ fontFamily: "var(--font-dm-mono)" }}
               >
                 {claim?.claim_id ?? id}
               </p>
               <h1
-                className="text-2xl font-bold text-[#E4F0FF]"
-                style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.02em", textTransform: "uppercase" }}
+                className="text-2xl font-semibold text-[var(--ms-text)]"
+                style={{ fontFamily: "var(--font-dm-sans)" }}
               >
                 {claim?.patient?.name ?? "Unknown Patient"}
               </h1>
@@ -407,15 +404,15 @@ export default function ClaimDetailPage() {
                   { k: "Provider", v: claim?.provider_name },
                   { k: "Facility", v: claim?.facility_name },
                 ].map(({ k, v }) => (
-                  <div key={k} className="flex gap-2 text-xs">
+                  <div key={k} className="flex gap-2 text-sm">
                     <span
-                      className="text-[rgba(228,240,255,0.35)]"
-                      style={{ fontFamily: "var(--font-dm-mono)", textTransform: "uppercase", fontSize: 10 }}
+                      className="text-[rgba(var(--ms-text-rgb),0.35)]"
+                      style={{ fontFamily: "var(--font-dm-mono)", textTransform: "uppercase", fontSize: 11 }}
                     >
                       {k}
                     </span>
                     <span
-                      className="text-[rgba(228,240,255,0.65)]"
+                      className="text-[rgba(var(--ms-text-rgb),0.65)]"
                       style={{ fontFamily: "var(--font-dm-mono)" }}
                     >
                       {v ?? "—"}
@@ -430,9 +427,9 @@ export default function ClaimDetailPage() {
                 className="rounded-full px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest"
                 style={{
                   fontFamily: "var(--font-dm-mono)",
-                  color: validationPassed ? "#00FF9C" : hasWarnings ? "#F59E0B" : "rgba(228,240,255,0.4)",
-                  background: validationPassed ? "rgba(0,255,156,0.1)" : hasWarnings ? "rgba(245,158,11,0.1)" : "rgba(255,255,255,0.05)",
-                  border: `1px solid ${validationPassed ? "rgba(0,255,156,0.35)" : hasWarnings ? "rgba(245,158,11,0.35)" : "rgba(255,255,255,0.1)"}`,
+                  color: validationPassed ? "var(--ms-success)" : hasWarnings ? "var(--ms-warning)" : "rgba(var(--ms-text-rgb),0.4)",
+                  background: validationPassed ? "rgba(var(--ms-success-rgb),0.1)" : hasWarnings ? "rgba(var(--ms-warning-rgb),0.1)" : "rgba(var(--ms-overlay-rgb),0.05)",
+                  border: `1px solid ${validationPassed ? "rgba(var(--ms-success-rgb),0.35)" : hasWarnings ? "rgba(var(--ms-warning-rgb),0.35)" : "rgba(var(--ms-overlay-rgb),0.1)"}`,
                 }}
               >
                 {validationPassed ? "Passed" : hasWarnings ? "Warning" : "Unknown"}
@@ -446,15 +443,15 @@ export default function ClaimDetailPage() {
         </motion.div>
 
         {loading && (
-          <p className="text-sm text-[rgba(228,240,255,0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>
+          <p className="text-sm text-[rgba(var(--ms-text-rgb),0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>
             Loading claim…
           </p>
         )}
 
         {error && !loading && (
           <div
-            className="glass-card-sm mb-6 flex items-center gap-2.5 px-4 py-3 text-[#FF3B6B]"
-            style={{ borderLeft: "2px solid #FF3B6B" }}
+            className="glass-card-sm mb-6 flex items-center gap-2.5 px-4 py-3 text-[var(--ms-error)]"
+            style={{ borderLeft: "2px solid var(--ms-error)" }}
           >
             <TriangleAlert className="size-4 shrink-0" />
             <span className="text-sm" style={{ fontFamily: "var(--font-dm-sans)" }}>{error}</span>
@@ -467,14 +464,14 @@ export default function ClaimDetailPage() {
             <div className="mb-8 grid gap-6 md:grid-cols-2">
               <div>
                 <p
-                  className="mb-4 text-base font-bold uppercase tracking-wider text-[#00D4FF]"
+                  className="mb-4 text-base font-bold uppercase tracking-wider text-[var(--ms-accent)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   ICD-10 Diagnosis Codes
                 </p>
                 <div className="space-y-3">
                   {icd10Codes.length === 0
-                    ? <p className="text-xs text-[rgba(228,240,255,0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>No diagnosis codes.</p>
+                    ? <p className="text-xs text-[rgba(var(--ms-text-rgb),0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>No diagnosis codes.</p>
                     : icd10Codes.map((code, idx) => (
                       <CodeCard
                         key={`${code.code}-${idx}`}
@@ -491,14 +488,14 @@ export default function ClaimDetailPage() {
 
               <div>
                 <p
-                  className="mb-4 text-base font-bold uppercase tracking-wider text-[#00D4FF]"
+                  className="mb-4 text-base font-bold uppercase tracking-wider text-[var(--ms-accent)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   CPT-4 Procedure Codes
                 </p>
                 <div className="space-y-3">
                   {cptCodes.length === 0
-                    ? <p className="text-xs text-[rgba(228,240,255,0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>No procedure codes.</p>
+                    ? <p className="text-xs text-[rgba(var(--ms-text-rgb),0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>No procedure codes.</p>
                     : cptCodes.map((code, idx) => (
                       <CodeCard
                         key={`${code.code}-${idx}`}
@@ -518,7 +515,7 @@ export default function ClaimDetailPage() {
             {hasWarnings && claim.validation_errors && (
               <div className="mb-6 space-y-2">
                 <p
-                  className="mb-3 text-base font-bold uppercase tracking-wider text-[#F59E0B]"
+                  className="mb-3 text-base font-bold uppercase tracking-wider text-[var(--ms-warning)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   Validation Warnings
@@ -527,17 +524,17 @@ export default function ClaimDetailPage() {
                   <div
                     key={`${ve.field}-${idx}`}
                     className="glass-card-sm flex items-start gap-3 px-4 py-3"
-                    style={{ borderLeft: "2px solid #F59E0B" }}
+                    style={{ borderLeft: "2px solid var(--ms-warning)" }}
                   >
-                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[#F59E0B]" />
+                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-[var(--ms-warning)]" />
                     <div>
                       <p
-                        className="mb-1 text-base font-bold uppercase tracking-wider text-[#F59E0B]"
+                        className="mb-1 text-base font-bold uppercase tracking-wider text-[var(--ms-warning)]"
                         style={{ fontFamily: "var(--font-dm-mono)" }}
                       >
                         {ve.field}
                       </p>
-                      <p className="text-sm text-[#E4F0FF]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
+                      <p className="text-sm text-[var(--ms-text)]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
                         {ve.message}
                       </p>
                     </div>
@@ -550,18 +547,18 @@ export default function ClaimDetailPage() {
             {explainability && (
               <div className="mb-10 space-y-3">
                 <p
-                  className="mb-4 text-base font-bold uppercase tracking-wider text-[#00D4FF]"
+                  className="mb-4 text-base font-bold uppercase tracking-wider text-[var(--ms-accent)]"
                   style={{ fontFamily: "var(--font-dm-mono)" }}
                 >
                   Explainability
                 </p>
                 <AccordionSection title="ICD-10 Reasoning Chain">
-                  <p className="text-sm text-[#E4F0FF]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
+                  <p className="text-sm text-[var(--ms-text)]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
                     {explainability.icd10_reasoning_chain || "No reasoning chain provided."}
                   </p>
                 </AccordionSection>
                 <AccordionSection title="CPT-4 Reasoning Chain">
-                  <p className="text-sm text-[#E4F0FF]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
+                  <p className="text-sm text-[var(--ms-text)]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
                     {explainability.cpt4_reasoning_chain || "No reasoning chain provided."}
                   </p>
                 </AccordionSection>
@@ -570,15 +567,15 @@ export default function ClaimDetailPage() {
                     <ul className="space-y-2">
                       {explainability.citations.map((c, idx) => (
                         <li key={idx} className="flex items-start gap-2.5">
-                          <Quote className="mt-0.5 size-3 shrink-0 text-[#00D4FF]" />
-                          <span className="text-sm text-[#E4F0FF]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
+                          <Quote className="mt-0.5 size-3 shrink-0 text-[var(--ms-accent)]" />
+                          <span className="text-sm text-[var(--ms-text)]" style={{ fontFamily: "var(--font-dm-sans)", lineHeight: 1.7 }}>
                             {c}
                           </span>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-xs text-[rgba(228,240,255,0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>
+                    <p className="text-xs text-[rgba(var(--ms-text-rgb),0.4)]" style={{ fontFamily: "var(--font-dm-mono)" }}>
                       No citations captured for this claim.
                     </p>
                   )}

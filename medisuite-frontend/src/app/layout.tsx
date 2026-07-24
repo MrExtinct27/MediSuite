@@ -3,6 +3,7 @@ import { Syne, DM_Sans, DM_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/layout/Navbar";
+import { Providers } from "./providers";
 
 const syne = Syne({
   variable: "--font-syne",
@@ -47,9 +48,11 @@ export default function RootLayout({
       <body
         className={`${syne.variable} ${dmSans.variable} ${dmMono.variable} ${spaceGrotesk.variable} min-h-screen bg-background text-foreground pt-20`}
       >
-        <Navbar />
-        {children}
-        <Toaster />
+        <Providers>
+          <Navbar />
+          {children}
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );

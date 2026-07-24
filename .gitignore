@@ -88,4 +88,5 @@ tessdata/
 
 /tests/
 /claims/
-/knowledge_base/
+/knowledge_base/chroma_data/
+chroma_data_backup/

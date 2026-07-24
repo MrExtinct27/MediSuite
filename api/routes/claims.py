@@ -6,7 +6,9 @@ GET  /claims/{claim_id} — retrieve a previously generated claim record
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import uuid
 from typing import Optional
 
@@ -21,15 +23,34 @@ from agents.coding_agent import _retrieval_cache
 from api.limiter import limiter
 from datetime import datetime
 
+from api.security import get_current_user
 from db.database import get_db
-from db.models import Claim, ReviewQueue
-from orchestrator.graph import graph
+from db.models import Claim, ReviewQueue, User
+from orchestrator.graph import graph, GRAPH_RECURSION_LIMIT
 from orchestrator.state import resolve_llm_model
 from utils.encryption import decrypt_claim
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/claims", tags=["claims"])
 cache_router = APIRouter(prefix="/cache", tags=["cache"])
+
+# Hard wall-clock cap on the whole pipeline so a slow model can never leave a
+# request (and its claim row) hanging indefinitely. Configurable via env.
+PIPELINE_TIMEOUT_SECONDS: float = float(os.getenv("PIPELINE_TIMEOUT_SECONDS", "300"))
+
+
+def _mark_claim_failed(db: Session, claim_id: str) -> None:
+    """Mark a claim row failed so a timed-out/aborted run is never left stuck in
+    'processing'. Best-effort — never raises into the request handler."""
+    try:
+        claim = db.get(Claim, claim_id)
+        if claim is not None:
+            claim.status = "failed"
+            claim.processing_stage = "failed"
+            db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Could not mark claim %s failed: %s", claim_id, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +119,7 @@ async def process_claim(
     insurance_provider: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Submit a clinical document for automated ICD-10 / CPT-4 coding and claim generation.
@@ -152,6 +174,7 @@ async def process_claim(
             db.add(
                 Claim(
                     claim_id=generated_claim_id,
+                    user_id=current_user.id,
                     patient_name=patient_name or None,
                     patient_dob=patient_dob or None,
                     patient_insurance_id=patient_insurance_id or None,
@@ -160,15 +183,40 @@ async def process_claim(
                 )
             )
         else:
+            # A client-supplied claim_id must not let a user overwrite someone else's claim.
+            if existing.user_id is not None and existing.user_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Claim belongs to another user.")
+            existing.user_id = current_user.id
             existing.status = "processing"
             existing.processing_stage = "document"
         db.commit()
+    except HTTPException:
+        db.rollback()
+        raise  # ownership 403 must surface, not be swallowed as a warning
     except Exception as e:
         db.rollback()
         logger.exception("Failed to create processing row for claim %s: %s", generated_claim_id, e)
 
     try:
-        final_state = await graph.ainvoke(initial_state)
+        # Hard wall-clock timeout on the whole pipeline; recursion_limit is a
+        # second, independent safety net against an unbounded graph loop.
+        final_state = await asyncio.wait_for(
+            graph.ainvoke(initial_state, config={"recursion_limit": GRAPH_RECURSION_LIMIT}),
+            timeout=PIPELINE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error(
+            "Pipeline exceeded %.0fs time limit for claim %s — marking failed.",
+            PIPELINE_TIMEOUT_SECONDS, generated_claim_id,
+        )
+        _mark_claim_failed(db, generated_claim_id)
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"Processing exceeded the {int(PIPELINE_TIMEOUT_SECONDS)}s time limit "
+                "and was aborted. Please try again, or use a faster model."
+            ),
+        )
     except RateLimitError as e:
         logger.exception("LLM rate limit / quota exceeded for claim %s: %s", generated_claim_id, e)
         raise HTTPException(
@@ -241,14 +289,33 @@ def _summary_validation_status(claim: Claim) -> str:
     return "passed" if claim.validation_passed else "failed"
 
 
+def _assert_claim_access(claim: Optional[Claim], current_user: User) -> Claim:
+    """Return the claim if the current user may access it, else raise 404.
+    Legacy claims with a null user_id are treated as accessible to any user."""
+    if claim is None:
+        raise HTTPException(status_code=404, detail="Claim not found.")
+    if claim.user_id is not None and claim.user_id != current_user.id:
+        # Hide existence of other users' claims — 404 rather than 403.
+        raise HTTPException(status_code=404, detail="Claim not found.")
+    return claim
+
+
 @router.get("/", response_model=list[ClaimSummary])
-def list_claims(db: Session = Depends(get_db)):
+def list_claims(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
-    Return a summary of all claims (newest first) for the dashboard, read entirely
-    from the SQLite records — never by parsing encrypted .enc files.
+    Return a summary of the current user's claims (newest first) for the dashboard,
+    read entirely from the SQLite records — never by parsing encrypted .enc files.
     """
     try:
-        claims = db.query(Claim).order_by(Claim.created_at.desc()).all()
+        claims = (
+            db.query(Claim)
+            .filter(Claim.user_id == current_user.id)
+            .order_by(Claim.created_at.desc())
+            .all()
+        )
         return [
             ClaimSummary(
                 claim_id=c.claim_id,
@@ -264,12 +331,81 @@ def list_claims(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to list claims.") from exc
 
 
+def _claims_files_dir() -> Path:
+    """Resolve the directory holding encrypted (.enc) / legacy (.json) claim files.
+    Honors CLAIMS_DIR (as claim_agent does when writing), else the project ./claims dir."""
+    env = os.getenv("CLAIMS_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / "claims"
+
+
+@router.delete("/")
+def clear_all_claims(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete the CURRENT USER's claim records — DB rows, their review-queue entries,
+    and their encrypted claim files on disk. Intended for resetting the dashboard
+    before a demo. Never touches other users' claims.
+
+    Returns the number of claims deleted. On any failure the transaction is rolled
+    back and a 500 is raised — this never silently succeeds.
+    """
+    try:
+        claim_ids = [
+            row[0]
+            for row in db.query(Claim.claim_id).filter(Claim.user_id == current_user.id).all()
+        ]
+        deleted_count = len(claim_ids)
+
+        # Clear related records first so nothing is left dangling — only for this
+        # user's claims.
+        if claim_ids:
+            db.query(ReviewQueue).filter(ReviewQueue.claim_id.in_(claim_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(Claim).filter(Claim.user_id == current_user.id).delete(
+            synchronize_session=False
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Failed to clear claims from DB: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to clear claims.") from exc
+
+    # DB is the source of truth and is already cleared; best-effort remove the
+    # on-disk claim files so they aren't orphaned. Missing files are not an error.
+    claims_dir = _claims_files_dir()
+    files_removed = 0
+    for cid in claim_ids:
+        for suffix in (".enc", ".json"):
+            path = claims_dir / f"{cid}{suffix}"
+            try:
+                path.unlink()
+                files_removed += 1
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning("Could not delete claim file %s: %s", path, exc)
+
+    logger.info("Cleared %d claim(s); removed %d file(s).", deleted_count, files_removed)
+    return {"deleted": deleted_count, "files_removed": files_removed}
+
+
 @router.get("/{claim_id}/result")
-def get_claim_result(claim_id: str):
+def get_claim_result(
+    claim_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Return the full claim object. Tries encrypted .enc first, falls back to
     legacy .json for claims written before encryption was enabled.
     """
+    _assert_claim_access(db.get(Claim, claim_id), current_user)
+
     claims_dir = Path(__file__).resolve().parents[2] / "claims"
     claims_dir.mkdir(exist_ok=True)
 
@@ -300,16 +436,18 @@ def get_claim_result(claim_id: str):
 
 
 @router.get("/{claim_id}/status", response_model=ClaimStatusResponse)
-def get_claim_status(claim_id: str, db: Session = Depends(get_db)):
+def get_claim_status(
+    claim_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Fast live-progress check for the Submit Claim page (polled ~1x/second).
 
     Reads only the Claim row's stage/status columns — never decrypts the claim
     file — so it stays cheap enough to poll continuously while the pipeline runs.
     """
-    claim = db.get(Claim, claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim {claim_id!r} not found.")
+    claim = _assert_claim_access(db.get(Claim, claim_id), current_user)
 
     # Legacy rows (created before processing_stage existed) have no stage: infer
     # "complete" from a generated status, otherwise assume it is still at document.
@@ -325,11 +463,16 @@ def get_claim_status(claim_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/review-queue")
-def get_review_queue(db: Session = Depends(get_db)):
-    """Return all claims currently pending human review, newest first."""
+def get_review_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's claims pending human review, newest first."""
+    user_claim_ids = db.query(Claim.claim_id).filter(Claim.user_id == current_user.id)
     items = (
         db.query(ReviewQueue)
         .filter(ReviewQueue.status == "pending")
+        .filter(ReviewQueue.claim_id.in_(user_claim_ids))
         .order_by(ReviewQueue.created_at.desc())
         .all()
     )
@@ -354,8 +497,10 @@ def approve_claim(
     claim_id: str,
     reviewer_notes: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Approve a claim that was flagged for human review."""
+    _assert_claim_access(db.get(Claim, claim_id), current_user)
     item = db.query(ReviewQueue).filter(ReviewQueue.claim_id == claim_id).first()
     if item is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id!r} not found in review queue.")
@@ -372,8 +517,10 @@ def reject_claim(
     claim_id: str,
     reviewer_notes: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Reject a claim that was flagged for human review."""
+    _assert_claim_access(db.get(Claim, claim_id), current_user)
     item = db.query(ReviewQueue).filter(ReviewQueue.claim_id == claim_id).first()
     if item is None:
         raise HTTPException(status_code=404, detail=f"Claim {claim_id!r} not found in review queue.")
@@ -386,12 +533,13 @@ def reject_claim(
 
 
 @router.get("/{claim_id}", response_model=ClaimRecord)
-def get_claim(claim_id: str, db: Session = Depends(get_db)):
-    """Retrieve a previously processed claim by ID."""
-    claim = db.get(Claim, claim_id)
-    if claim is None:
-        raise HTTPException(status_code=404, detail=f"Claim {claim_id!r} not found.")
-    return claim
+def get_claim(
+    claim_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve a previously processed claim by ID (only the owner's own claims)."""
+    return _assert_claim_access(db.get(Claim, claim_id), current_user)
 
 
 # ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@ const AGENTS: Array<{ key: AgentKey; name: string; description: string; icon: Re
   {
     key: "coding_agent",
     name: "Coding Agent",
-    description: "Running 2-stage RAG: ChromaDB retrieval + GPT-4o reranking",
+    description: "Running 2-stage RAG: ChromaDB retrieval + LLM reranking",
     icon: <BrainCircuit className="size-4" />,
   },
   {
@@ -57,30 +57,30 @@ function AgentStatusDot({ status }: { status: AgentStatus }) {
     return (
       <div className="relative flex size-2.5 items-center justify-center">
         <span
-          className="absolute inline-flex h-full w-full rounded-full bg-[#00D4FF] opacity-60"
+          className="absolute inline-flex h-full w-full rounded-full bg-[var(--ms-accent)] opacity-60"
           style={{ animation: "neon-pulse 1.5s ease-in-out infinite" }}
         />
-        <span className="relative inline-flex size-2 rounded-full bg-[#00D4FF]" />
+        <span className="relative inline-flex size-2 rounded-full bg-[var(--ms-accent)]" />
       </div>
     );
   }
   if (status === "complete") {
     return (
       <span
-        className="inline-flex size-2 rounded-full bg-[#00FF9C]"
-        style={{ boxShadow: "0 0 6px #00FF9C" }}
+        className="inline-flex size-2 rounded-full bg-[var(--ms-success)]"
+        style={{ boxShadow: "0 0 6px var(--ms-success)" }}
       />
     );
   }
   if (status === "error") {
     return (
       <span
-        className="inline-flex size-2 rounded-full bg-[#FF3B6B]"
-        style={{ boxShadow: "0 0 6px #FF3B6B" }}
+        className="inline-flex size-2 rounded-full bg-[var(--ms-error)]"
+        style={{ boxShadow: "0 0 6px var(--ms-error)" }}
       />
     );
   }
-  return <span className="inline-flex size-2 rounded-full bg-[rgba(228,240,255,0.15)]" />;
+  return <span className="inline-flex size-2 rounded-full bg-[rgba(var(--ms-text-rgb),0.15)]" />;
 }
 
 /* ─── Status badge ───────────────────────────────────────────────────── */
@@ -97,9 +97,9 @@ function StatusBadge({ status }: { status: AgentStatus }) {
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest"
           style={{
             fontFamily: "var(--font-dm-mono)",
-            color: "#00D4FF",
-            background: "rgba(0,212,255,0.12)",
-            border: "1px solid rgba(0,212,255,0.35)",
+            color: "var(--ms-accent)",
+            background: "rgba(var(--ms-accent-rgb),0.12)",
+            border: "1px solid rgba(var(--ms-accent-rgb),0.35)",
           }}
         >
           <Loader2 className="size-3 animate-spin" />
@@ -116,9 +116,9 @@ function StatusBadge({ status }: { status: AgentStatus }) {
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest"
           style={{
             fontFamily: "var(--font-dm-mono)",
-            color: "#00FF9C",
-            background: "rgba(0,255,156,0.1)",
-            border: "1px solid rgba(0,255,156,0.3)",
+            color: "var(--ms-success)",
+            background: "rgba(var(--ms-success-rgb),0.1)",
+            border: "1px solid rgba(var(--ms-success-rgb),0.3)",
           }}
         >
           <CircleCheck className="size-3" />
@@ -135,9 +135,9 @@ function StatusBadge({ status }: { status: AgentStatus }) {
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest"
           style={{
             fontFamily: "var(--font-dm-mono)",
-            color: "#FF3B6B",
-            background: "rgba(255,59,107,0.1)",
-            border: "1px solid rgba(255,59,107,0.3)",
+            color: "var(--ms-error)",
+            background: "rgba(var(--ms-error-rgb),0.1)",
+            border: "1px solid rgba(var(--ms-error-rgb),0.3)",
           }}
         >
           <XCircle className="size-3" />
@@ -150,14 +150,14 @@ function StatusBadge({ status }: { status: AgentStatus }) {
 
 /* ─── Icon ───────────────────────────────────────────────────────────── */
 function StatusIcon({ status, baseIcon }: { status: AgentStatus; baseIcon: React.ReactNode }) {
-  if (status === "complete") return <CircleCheck className="size-5 text-[#00FF9C]" />;
-  if (status === "error")    return <XCircle className="size-5 text-[#FF3B6B]" />;
+  if (status === "complete") return <CircleCheck className="size-5 text-[var(--ms-success)]" />;
+  if (status === "error")    return <XCircle className="size-5 text-[var(--ms-error)]" />;
   if (status === "running") {
     return (
       <div className="relative">
-        <span className="absolute -inset-2 rounded-full bg-[#00D4FF] opacity-20 blur-md" />
+        <span className="absolute -inset-2 rounded-full bg-[var(--ms-accent)] opacity-20 blur-md" />
         <motion.div
-          className="relative text-[#00D4FF]"
+          className="relative text-[var(--ms-accent)]"
           animate={{ opacity: [0.6, 1, 0.6] }}
           transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
         >
@@ -166,7 +166,7 @@ function StatusIcon({ status, baseIcon }: { status: AgentStatus; baseIcon: React
       </div>
     );
   }
-  return <div className="text-[rgba(228,240,255,0.3)]">{baseIcon}</div>;
+  return <div className="text-[rgba(var(--ms-text-rgb),0.3)]">{baseIcon}</div>;
 }
 
 /* ─── Main tracker ───────────────────────────────────────────────────── */
@@ -181,34 +181,34 @@ export function AgentTracker({ agentState, currentAgent }: AgentTrackerProps) {
         const isComplete = status === "complete";
         const isError = status === "error";
 
-        const nameColor = isComplete ? "#00FF9C" : isError ? "#FF3B6B" : isRunning ? "#E4F0FF" : "rgba(228,240,255,0.45)";
+        const nameColor = isComplete ? "var(--ms-success)" : isError ? "var(--ms-error)" : isRunning ? "var(--ms-text)" : "rgba(var(--ms-text-rgb),0.45)";
 
         const card = (
           <div
             className="relative overflow-hidden rounded-2xl p-4 transition-all duration-300"
             style={{
               background: isRunning
-                ? "rgba(0,212,255,0.04)"
+                ? "rgba(var(--ms-accent-rgb),0.04)"
                 : isComplete
-                  ? "rgba(0,255,156,0.03)"
-                  : "rgba(0,212,255,0.02)",
+                  ? "rgba(var(--ms-success-rgb),0.03)"
+                  : "rgba(var(--ms-accent-rgb),0.02)",
               border: isRunning
-                ? "1px solid rgba(0,212,255,0.35)"
+                ? "1px solid rgba(var(--ms-accent-rgb),0.35)"
                 : isComplete
-                  ? "1px solid rgba(0,255,156,0.2)"
+                  ? "1px solid rgba(var(--ms-success-rgb),0.2)"
                   : isError
-                    ? "1px solid rgba(255,59,107,0.2)"
-                    : "1px solid rgba(0,212,255,0.08)",
+                    ? "1px solid rgba(var(--ms-error-rgb),0.2)"
+                    : "1px solid rgba(var(--ms-accent-rgb),0.08)",
               boxShadow: isRunning
-                ? "0 0 30px rgba(0,212,255,0.4), 0 0 60px rgba(0,212,255,0.1)"
+                ? "0 0 30px rgba(var(--ms-accent-rgb),0.4), 0 0 60px rgba(var(--ms-accent-rgb),0.1)"
                 : isComplete
-                  ? "0 0 12px rgba(0,255,156,0.15)"
+                  ? "0 0 12px rgba(var(--ms-success-rgb),0.15)"
                   : "none",
             }}
           >
             {/* Radial glow (running only) */}
             {isRunning && (
-              <div className="pointer-events-none absolute -left-8 -top-8 h-24 w-24 rounded-full bg-[#00D4FF] opacity-[0.06] blur-2xl" />
+              <div className="pointer-events-none absolute -left-8 -top-8 h-24 w-24 rounded-full bg-[var(--ms-accent)] opacity-[0.06] blur-2xl" />
             )}
 
             <div className="relative flex items-start gap-3.5">
@@ -216,11 +216,11 @@ export function AgentTracker({ agentState, currentAgent }: AgentTrackerProps) {
                 className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl"
                 style={{
                   border: isRunning
-                    ? "1px solid rgba(0,212,255,0.4)"
-                    : "1px solid rgba(0,212,255,0.1)",
+                    ? "1px solid rgba(var(--ms-accent-rgb),0.4)"
+                    : "1px solid rgba(var(--ms-accent-rgb),0.1)",
                   background: isRunning
-                    ? "rgba(0,212,255,0.1)"
-                    : "rgba(0,212,255,0.04)",
+                    ? "rgba(var(--ms-accent-rgb),0.1)"
+                    : "rgba(var(--ms-accent-rgb),0.04)",
                 }}
               >
                 <StatusIcon status={status} baseIcon={agent.icon} />
@@ -251,7 +251,7 @@ export function AgentTracker({ agentState, currentAgent }: AgentTrackerProps) {
                   style={{
                     fontFamily: "var(--font-dm-sans)",
                     lineHeight: 1.6,
-                    color: isRunning ? "rgba(228,240,255,0.65)" : "rgba(228,240,255,0.35)",
+                    color: isRunning ? "rgba(var(--ms-text-rgb),0.65)" : "rgba(var(--ms-text-rgb),0.35)",
                   }}
                 >
                   {agent.description}

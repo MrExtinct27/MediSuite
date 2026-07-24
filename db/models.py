@@ -6,16 +6,27 @@ from typing import Optional
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class Claim(Base):
     __tablename__ = "claims"
 
     claim_id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
+    # Owner of the claim. Nullable so pre-auth (legacy) claims remain valid.
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True)
     patient_name: Mapped[Optional[str]] = mapped_column(String(256))
     patient_dob: Mapped[Optional[str]] = mapped_column(String(32))
     patient_insurance_id: Mapped[Optional[str]] = mapped_column(String(128))

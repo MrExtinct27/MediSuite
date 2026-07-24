@@ -37,12 +37,15 @@ def _migrate_add_missing_columns() -> None:
     """
     from sqlalchemy import inspect, text
 
-    # Column name -> SQL type used in ALTER TABLE ADD COLUMN
+    # Column name -> SQL type used in ALTER TABLE ADD COLUMN.
+    # NOTE: the new `users` table is created by Base.metadata.create_all() in init_db();
+    # here we only add columns missing from tables that already existed.
     expected_columns = {
         "claims": {
             "service_date": "VARCHAR(32)",
             "avg_confidence": "FLOAT",
             "processing_stage": "VARCHAR(32)",
+            "user_id": "INTEGER",
         },
     }
 

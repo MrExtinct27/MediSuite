@@ -50,35 +50,49 @@
 
 :root {
   /* ================================================================= */
-  /* MediSuite — Medical Cyberpunk                                       */
+  /* MediSuite — Medical Cyberpunk (DARK, default)                       */
   /* Clinical Intelligence: Deep Navy + Cyan + Lime + Magenta           */
   /* ================================================================= */
 
+  /* --- Theme-driving primitives ------------------------------------ */
+  /* RGB triples (no alpha) so components can compose rgba(var(--x), a).*/
+  /* Overridden in .light below; every hardcoded color in the app maps  */
+  /* to one of these so both themes render coherently.                  */
+  --ms-text-rgb: 228, 240, 255;   /* primary text            */
+  --ms-accent-rgb: 0, 212, 255;   /* cyan brand accent       */
+  --ms-success-rgb: 0, 255, 156;  /* lime success            */
+  --ms-warning-rgb: 245, 158, 11; /* amber warning           */
+  --ms-error-rgb: 255, 59, 107;   /* magenta-red error       */
+  --ms-bg-rgb: 5, 13, 26;         /* app background          */
+  --ms-overlay-rgb: 255, 255, 255;/* subtle light overlays   */
+
+  /* Solid color aliases */
+  --ms-text: rgb(var(--ms-text-rgb));
+  --ms-accent: rgb(var(--ms-accent-rgb));   /* Cyan — primary */
+  --ms-success: rgb(var(--ms-success-rgb)); /* Lime — success / high confidence */
+  --ms-warning: rgb(var(--ms-warning-rgb));
+  --ms-error: rgb(var(--ms-error-rgb));     /* errors */
   --ms-bg: #050D1A;
-  --ms-surface: rgba(0, 212, 255, 0.025);
-  --ms-surface-solid: #091223;
+  --ms-surface-solid: #091223;   /* card / panel surface */
   --ms-surface-2: #0c1830;
-  --ms-border: rgba(0, 212, 255, 0.08);
-  --ms-border-strong: rgba(0, 212, 255, 0.25);
+  --ms-popover-bg: #0a0f1e;      /* dropdown / select menu */
+  --ms-on-accent: #000810;       /* text on top of the cyan accent */
+  --ms-purple: #7C3AED;
 
-  /* Accent palette */
-  --ms-accent: #00D4FF;          /* Cyan — primary */
-  --ms-accent-glow: rgba(0, 212, 255, 0.35);
-  --ms-accent-dim: rgba(0, 212, 255, 0.1);
+  /* Hero grid line — DARK: a light cyan line, subtly visible on the dark bg. */
+  --ms-grid-line: rgba(0, 212, 255, 0.04);
 
-  --ms-success: #00FF9C;         /* Lime — success / high confidence */
-  --ms-success-glow: rgba(0, 255, 156, 0.3);
-  --ms-success-dim: rgba(0, 255, 156, 0.1);
-
-  --ms-warning: #F59E0B;
-  --ms-warning-dim: rgba(245, 158, 11, 0.12);
-
-  --ms-error: #FF3B6B;           /* Magenta-red — errors */
-  --ms-error-glow: rgba(255, 59, 107, 0.3);
-  --ms-error-dim: rgba(255, 59, 107, 0.1);
-
-  --ms-text: #E4F0FF;
-  --ms-muted: rgba(228, 240, 255, 0.45);
+  --ms-surface: rgba(var(--ms-accent-rgb), 0.025);
+  --ms-border: rgba(var(--ms-accent-rgb), 0.08);
+  --ms-border-strong: rgba(var(--ms-accent-rgb), 0.25);
+  --ms-accent-glow: rgba(var(--ms-accent-rgb), 0.35);
+  --ms-accent-dim: rgba(var(--ms-accent-rgb), 0.1);
+  --ms-success-glow: rgba(var(--ms-success-rgb), 0.3);
+  --ms-success-dim: rgba(var(--ms-success-rgb), 0.1);
+  --ms-warning-dim: rgba(var(--ms-warning-rgb), 0.12);
+  --ms-error-glow: rgba(var(--ms-error-rgb), 0.3);
+  --ms-error-dim: rgba(var(--ms-error-rgb), 0.1);
+  --ms-muted: rgba(var(--ms-text-rgb), 0.45);
 
   /* ================================================================= */
   /* shadcn/ui tokens                                                   */
@@ -90,45 +104,75 @@
   --card: var(--ms-surface-solid);
   --card-foreground: var(--ms-text);
 
-  --popover: #091223;
+  --popover: var(--ms-surface-solid);
   --popover-foreground: var(--ms-text);
 
   --primary: var(--ms-accent);
-  --primary-foreground: #000810;
+  --primary-foreground: var(--ms-on-accent);
 
-  --secondary: rgba(0, 212, 255, 0.05);
+  --secondary: rgba(var(--ms-accent-rgb), 0.05);
   --secondary-foreground: var(--ms-text);
 
-  --muted: rgba(0, 212, 255, 0.04);
+  --muted: rgba(var(--ms-accent-rgb), 0.04);
   --muted-foreground: var(--ms-muted);
 
-  --accent: rgba(0, 212, 255, 0.1);
+  --accent: rgba(var(--ms-accent-rgb), 0.1);
   --accent-foreground: var(--ms-text);
 
   --destructive: var(--ms-error);
   --border: var(--ms-border);
-  --input: rgba(0, 212, 255, 0.07);
-  --ring: rgba(0, 212, 255, 0.4);
+  --input: rgba(var(--ms-accent-rgb), 0.07);
+  --ring: rgba(var(--ms-accent-rgb), 0.4);
 
-  --chart-1: #00D4FF;
-  --chart-2: #00FF9C;
-  --chart-3: #7C3AED;
-  --chart-4: #F59E0B;
-  --chart-5: #FF3B6B;
+  --chart-1: var(--ms-accent);
+  --chart-2: var(--ms-success);
+  --chart-3: var(--ms-purple);
+  --chart-4: var(--ms-warning);
+  --chart-5: var(--ms-error);
 
   --radius: 1rem;  /* 16px base */
 
-  --sidebar: #091223;
+  --sidebar: var(--ms-surface-solid);
   --sidebar-foreground: var(--ms-text);
   --sidebar-primary: var(--ms-accent);
-  --sidebar-primary-foreground: #000810;
-  --sidebar-accent: rgba(0, 212, 255, 0.1);
+  --sidebar-primary-foreground: var(--ms-on-accent);
+  --sidebar-accent: rgba(var(--ms-accent-rgb), 0.1);
   --sidebar-accent-foreground: var(--ms-text);
   --sidebar-border: var(--ms-border);
-  --sidebar-ring: rgba(0, 212, 255, 0.4);
+  --sidebar-ring: rgba(var(--ms-accent-rgb), 0.4);
 }
 
 .dark {}
+
+/* ================================================================== */
+/* LIGHT THEME — overrides only the primitives; everything else follows */
+/* ================================================================== */
+.light {
+  color-scheme: light;
+
+  /* Darkened palette so brand colors stay readable on white */
+  --ms-text-rgb: 20, 30, 48;      /* dark navy/charcoal text */
+  --ms-accent-rgb: 0, 150, 190;   /* deeper cyan/teal        */
+  --ms-success-rgb: 0, 150, 94;   /* deeper green            */
+  --ms-warning-rgb: 180, 83, 9;   /* deeper amber            */
+  --ms-error-rgb: 209, 30, 74;    /* deeper rose-red         */
+  --ms-bg-rgb: 240, 243, 248;     /* very light cool gray    */
+  --ms-overlay-rgb: 20, 30, 48;   /* overlays flip to dark   */
+
+  --ms-bg: #F0F3F8;               /* near-white cool gray    */
+  --ms-surface-solid: #FFFFFF;    /* pure white card         */
+  --ms-surface-2: #F5F8FC;
+  --ms-popover-bg: #FFFFFF;
+  --ms-on-accent: #FFFFFF;        /* white text on deep cyan */
+
+  /* Borders: light gray with a subtle blue tint */
+  --ms-border: rgba(30, 58, 95, 0.12);
+  --ms-border-strong: rgba(30, 58, 95, 0.22);
+
+  /* Hero grid line — LIGHT: a darker teal-navy line so it stays visible on
+     the near-white background (a faint dark-mode value would vanish here). */
+  --ms-grid-line: rgba(15, 60, 90, 0.06);
+}
 
 /* ================================================================== */
 /* Base styles                                                          */
@@ -149,10 +193,23 @@
 
     /* Soft ambient glows only — grid lives in the hero section */
     background-image:
-      radial-gradient(ellipse at 15% 10%, rgba(0, 212, 255, 0.06) 0%, transparent 50%),
-      radial-gradient(ellipse at 85% 90%, rgba(0, 255, 156, 0.04) 0%, transparent 50%);
+      radial-gradient(ellipse at 15% 10%, rgba(var(--ms-accent-rgb), 0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 90%, rgba(var(--ms-success-rgb), 0.04) 0%, transparent 50%);
     background-size: 100% 100%, 100% 100%;
     background-attachment: fixed;
+  }
+}
+
+/* ================================================================== */
+/* Helper / subtitle / caption text — standardized across the app       */
+/* Uniform font family, size, color, and line-height everywhere.        */
+/* ================================================================== */
+@layer components {
+  .helper-text {
+    font-family: var(--font-dm-sans);
+    font-size: 0.875rem;   /* text-sm */
+    line-height: 1.7;
+    color: rgba(var(--ms-text-rgb), 0.5);
   }
 }
 
@@ -161,51 +218,51 @@
 /* ================================================================== */
 @layer components {
   .glass-card {
-    background: rgba(0, 212, 255, 0.025);
+    background: var(--ms-surface-solid);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 212, 255, 0.08);
+    border: 1px solid var(--ms-border);
     border-radius: 16px;
   }
 
   .glass-card-sm {
-    background: rgba(0, 212, 255, 0.02);
+    background: var(--ms-surface-solid);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(0, 212, 255, 0.07);
+    border: 1px solid var(--ms-border);
     border-radius: 12px;
   }
 
   /* Neon glow effects */
   .glow-cyan {
-    box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 60px rgba(0, 212, 255, 0.08);
+    box-shadow: 0 0 20px rgba(var(--ms-accent-rgb), 0.25), 0 0 60px rgba(var(--ms-accent-rgb), 0.08);
   }
   .glow-lime {
-    box-shadow: 0 0 20px rgba(0, 255, 156, 0.25), 0 0 60px rgba(0, 255, 156, 0.08);
+    box-shadow: 0 0 20px rgba(var(--ms-success-rgb), 0.25), 0 0 60px rgba(var(--ms-success-rgb), 0.08);
   }
   .glow-red {
-    box-shadow: 0 0 20px rgba(255, 59, 107, 0.25), 0 0 60px rgba(255, 59, 107, 0.08);
+    box-shadow: 0 0 20px rgba(var(--ms-error-rgb), 0.25), 0 0 60px rgba(var(--ms-error-rgb), 0.08);
   }
 
   /* Agent running glow */
   .agent-running {
-    box-shadow: 0 0 30px rgba(0, 212, 255, 0.4), 0 0 80px rgba(0, 212, 255, 0.12);
-    border-color: rgba(0, 212, 255, 0.35) !important;
+    box-shadow: 0 0 30px rgba(var(--ms-accent-rgb), 0.4), 0 0 80px rgba(var(--ms-accent-rgb), 0.12);
+    border-color: rgba(var(--ms-accent-rgb), 0.35) !important;
   }
 
   /* Code / ID badge */
   .code-badge {
-    background: rgba(0, 212, 255, 0.1);
-    border: 1px solid rgba(0, 212, 255, 0.3);
+    background: rgba(var(--ms-accent-rgb), 0.1);
+    border: 1px solid rgba(var(--ms-accent-rgb), 0.3);
     border-radius: 6px;
-    color: #00D4FF;
+    color: var(--ms-accent);
     font-family: var(--font-dm-mono);
     font-size: 11px;
     padding: 2px 8px;
     transition: box-shadow 0.2s ease;
   }
   .code-badge:hover {
-    box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+    box-shadow: 0 0 12px rgba(var(--ms-accent-rgb), 0.4);
   }
 
   /* Syne display font shorthand */
